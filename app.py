@@ -190,4 +190,4 @@ if vista_seleccionada == "📊 Tablero de Gestión Financiera":
     st.title("📊 Tablero de Control y Liquidación")
     st.caption("Consolidado de ventas, distribución por zonas y pago a domiciliarios")
     
-    df = pd.DataFrame(st.session_state.ped
+    df = pd.DataFrame(st.session_state.pedidos)

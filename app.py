@@ -72,17 +72,17 @@ for nombre in ["logo.jpeg", "LOGO.jpeg", "logo.png", "LOGO.png"]:
         LOGO_PATH = nombre
         break
 
-NUMERO_NEQUI_OFICIAL = "312 248 2577"
+NUMERO_NEQUI_OFICIAL = "3003790386"
 
 # 3. Catálogo de Productos
-
+# 3. Catálogo de Productos Oficial
+MENU_PRODUCTOS = {
     "Personal": 20000,
     "Mixta": 30000,
     "Mixta Sencilla": 40000,
     "Chorizo Tradicional": 10000,
     "Mixta Familiar": 50000,
     "MegaFamiliar": 80000
-}
 }
 
 # 4. Fletes por Zona

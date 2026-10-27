@@ -75,16 +75,14 @@ for nombre in ["logo.jpeg", "LOGO.jpeg", "logo.png", "LOGO.png"]:
 NUMERO_NEQUI_OFICIAL = "312 248 2577"
 
 # 3. Catálogo de Productos
-MENU_PRODUCTOS = {
-    "Picada Superchicharrón Personal": 35000,
-    "Picada Mixta Mediana (2 personas)": 60000,
-    "Picada Familiar Súper Chicharronazo (4 personas)": 115000,
-    "Costilla Ahumada al Barril (Porción 400g)": 38000,
-    "Chicharrón Crispy Tradicional (Porción 350g)": 28000,
-    "Porción de Patacones con Hogao": 12000,
-    "Porción de Papa Criolla Frita": 10000,
-    "Gaseosa Personal 400ml": 5000,
-    "Cerveza Club Colombia / Corona": 8000
+
+    "Personal": 20000,
+    "Mixta": 30000,
+    "Mixta Sencilla": 40000,
+    "Chorizo Tradicional": 10000,
+    "Mixta Familiar": 50000,
+    "MegaFamiliar": 80000
+}
 }
 
 # 4. Fletes por Zona

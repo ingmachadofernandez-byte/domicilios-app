@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import urllib.parse
 import os
+import re
 from datetime import datetime
 
 # 1. Configuración de pantalla Mobile First
@@ -29,6 +30,17 @@ def guardar_pedidos(lista_pedidos):
         df = pd.DataFrame(lista_pedidos)
         df.to_csv(CSV_FILE, index=False)
 
+# Función para formatear teléfono a formato internacional de Colombia (+57)
+def formatear_telefono_co(tel):
+    if not tel:
+        return ""
+    limpio = re.sub(r"\D", "", str(tel))
+    if len(limpio) == 10 and limpio.startswith("3"):
+        return f"57{limpio}"
+    elif limpio.startswith("57") and len(limpio) == 12:
+        return limpio
+    return limpio
+
 # Función para reproducir sonido de timbre tipo Rappi mediante Web Audio API
 def reproducir_alerta_sonora():
     st.components.v1.html("""
@@ -37,11 +49,11 @@ def reproducir_alerta_sonora():
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
             const now = ctx.currentTime;
             
-            // Primer tono (agudo)
+            // Primer tono
             const osc1 = ctx.createOscillator();
             const gain1 = ctx.createGain();
             osc1.type = 'sine';
-            osc1.frequency.setValueAtTime(880, now); // Nota A5
+            osc1.frequency.setValueAtTime(880, now);
             gain1.gain.setValueAtTime(0.3, now);
             gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
             osc1.connect(gain1);
@@ -49,11 +61,11 @@ def reproducir_alerta_sonora():
             osc1.start(now);
             osc1.stop(now + 0.35);
 
-            // Segundo tono (campana final)
+            // Segundo tono
             const osc2 = ctx.createOscillator();
             const gain2 = ctx.createGain();
             osc2.type = 'sine';
-            osc2.frequency.setValueAtTime(1174.66, now + 0.2); // Nota D6
+            osc2.frequency.setValueAtTime(1174.66, now + 0.2);
             gain2.gain.setValueAtTime(0.4, now + 0.2);
             gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
             osc2.connect(gain2);
@@ -61,7 +73,7 @@ def reproducir_alerta_sonora():
             osc2.start(now + 0.2);
             osc2.stop(now + 0.7);
         } catch (e) {
-            console.log("Audio no permitido en segundo plano:", e);
+            console.log("Audio no habilitado:", e);
         }
         </script>
     """, height=0)
@@ -246,7 +258,7 @@ if usuario_actual["rol"] == "DOMICILIARIO":
     mis_pedidos = [p for p in st.session_state.pedidos if p.get("repartidor_id") == rep_id and p.get("estado") != "ENTREGADO"]
     mis_completados = [p for p in st.session_state.pedidos if p.get("repartidor_id") == rep_id and p.get("estado") == "ENTREGADO"]
     
-    # Detección de nueva orden asignada para disparar alerta sonora y visual
+    # Detección de nueva orden
     clave_conteo = f"conteo_pendientes_{rep_id}"
     conteo_actual = len(mis_pedidos)
     conteo_previo = st.session_state.get(clave_conteo, conteo_actual)
@@ -268,7 +280,6 @@ if usuario_actual["rol"] == "DOMICILIARIO":
     c_met1.metric("💵 Mis Fletes Ganados Hoy", f"${ganancia_fletes:,.0f} COP")
     c_met2.metric("📦 Pedidos Pendientes", f"{len(mis_pedidos)}")
     
-    # Botón para refrescar manualmente la pantalla en el celular
     if st.button("🔄 Actualizar Mis Entregas"):
         st.session_state.pedidos = cargar_pedidos()
         st.rerun()
@@ -333,7 +344,7 @@ elif usuario_actual["rol"] == "ADMIN":
             col_c1, col_c2 = st.columns(2)
             with col_c1:
                 cliente_nom = st.text_input("Nombre del Cliente:", placeholder="Ej: Camila Ortiz")
-                cliente_tel = st.text_input("Teléfono WhatsApp:", placeholder="Ej: 3112345678")
+                cliente_tel = st.text_input("Teléfono WhatsApp (10 dígitos):", placeholder="Ej: 3112345678")
                 cliente_dir = st.text_input("Dirección de Entrega:", placeholder="Ej: Cra 66 # 10-45")
                 cliente_barrio = st.text_input("Barrio:", placeholder="Ej: Limonar")
             
@@ -409,6 +420,24 @@ elif usuario_actual["rol"] == "ADMIN":
             st.info("No hay pedidos registrados aún.")
         else:
             for p in reversed(st.session_state.pedidos):
+                nombre_rep = REPARTIDORES.get(p.get('repartidor_id'), 'Repartidor')
+                
+                # Construcción del mensaje para WhatsApp al cliente
+                msg_whatsapp = (
+                    f"🥓 *¡Hola {p['cliente']}! Tu pedido de El Súper Chicharronazo ya va en camino.*\n\n"
+                    f"📋 *Orden #{p['id']}*\n"
+                    f"🍽️ *Detalle:* {p['detalle']}\n"
+                    f"💰 *Subtotal Comida:* ${p['subtotal_comida']:,.0f} COP\n"
+                    f"🛵 *Domicilio:* ${p['flete']:,.0f} COP\n"
+                    f"💵 *Total a Cancelar:* ${p['total_cobrado']:,.0f} COP ({p['metodo_pago']})\n"
+                    f"🛵 *Tu Domiciliario:* {nombre_rep}\n\n"
+                    f"📍 *Dirección de Entrega:* {p['direccion']} ({p['barrio']})\n"
+                    f"¡Gracias por tu preferencia! En breve estará en tu puerta."
+                )
+                
+                tel_formateado = formatear_telefono_co(p.get("telefono", ""))
+                url_whatsapp = f"https://wa.me/{tel_formateado}?text={urllib.parse.quote(msg_whatsapp)}" if tel_formateado else None
+
                 st.markdown(f"""
                 <div class="rappi-card">
                     <span class="badge-orden">Orden #{p['id']} - {p['estado']}</span>
@@ -417,9 +446,14 @@ elif usuario_actual["rol"] == "ADMIN":
                     📍 <b>{p['direccion']}</b> ({p['barrio']}) - <i>{p['zona']}</i><br>
                     🍽️ <b>Items:</b> {p['detalle']}<br>
                     💰 <b>Comida:</b> ${p['subtotal_comida']:,.0f} | 🛵 <b>Flete:</b> ${p['flete']:,.0f} | 💳 <b>Pago:</b> {p['metodo_pago']}<br>
-                    🛵 <b>Repartidor Asignado:</b> {REPARTIDORES.get(p.get('repartidor_id'), 'Sin Asignar')}
+                    🛵 <b>Repartidor:</b> {nombre_rep}
                 </div>
                 """, unsafe_allow_html=True)
+                
+                # Botón directo para que Cristina envíe el WhatsApp al cliente
+                if url_whatsapp:
+                    st.link_button(f"💬 Notificar por WhatsApp a {p['cliente']} (#{p['id']})", url_whatsapp)
+                st.write("")
 
     # SUBVISTA: TABLERO FINANCIERO
     else:

@@ -29,6 +29,43 @@ def guardar_pedidos(lista_pedidos):
         df = pd.DataFrame(lista_pedidos)
         df.to_csv(CSV_FILE, index=False)
 
+# Función para reproducir sonido de timbre tipo Rappi mediante Web Audio API
+def reproducir_alerta_sonora():
+    st.components.v1.html("""
+        <script>
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const now = ctx.currentTime;
+            
+            // Primer tono (agudo)
+            const osc1 = ctx.createOscillator();
+            const gain1 = ctx.createGain();
+            osc1.type = 'sine';
+            osc1.frequency.setValueAtTime(880, now); // Nota A5
+            gain1.gain.setValueAtTime(0.3, now);
+            gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+            osc1.connect(gain1);
+            gain1.connect(ctx.destination);
+            osc1.start(now);
+            osc1.stop(now + 0.35);
+
+            // Segundo tono (campana final)
+            const osc2 = ctx.createOscillator();
+            const gain2 = ctx.createGain();
+            osc2.type = 'sine';
+            osc2.frequency.setValueAtTime(1174.66, now + 0.2); // Nota D6
+            gain2.gain.setValueAtTime(0.4, now + 0.2);
+            gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+            osc2.connect(gain2);
+            gain2.connect(ctx.destination);
+            osc2.start(now + 0.2);
+            osc2.stop(now + 0.7);
+        } catch (e) {
+            console.log("Audio no permitido en segundo plano:", e);
+        }
+        </script>
+    """, height=0)
+
 # 2. Estilos visuales Rappi-Style
 st.markdown("""
     <style>
@@ -60,6 +97,25 @@ st.markdown("""
         margin-bottom: 14px;
         box-shadow: 0 2px 10px rgba(0,0,0,0.06);
         border: 1px solid #ededed;
+    }
+    
+    .alerta-nueva-orden {
+        background: linear-gradient(135deg, #D90429 0%, #ef233c 100%);
+        color: #ffffff;
+        padding: 14px;
+        border-radius: 14px;
+        text-align: center;
+        font-size: 1.1rem;
+        font-weight: bold;
+        margin-bottom: 16px;
+        box-shadow: 0 4px 14px rgba(217, 4, 41, 0.35);
+        animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.02); }
+        100% { transform: scale(1); }
     }
     
     .badge-orden {
@@ -165,7 +221,7 @@ if not st.session_state.autenticado:
 # =========================================================
 usuario_actual = st.session_state.usuario_activo
 
-# Barra lateral común
+# Barra lateral
 if LOGO_PATH:
     st.sidebar.image(LOGO_PATH, width=110)
 st.sidebar.markdown(f"👤 **{usuario_actual['nombre']}**")
@@ -184,14 +240,39 @@ if usuario_actual["rol"] == "DOMICILIARIO":
     rep_id = usuario_actual["rep_id"]
     rep_nombre = REPARTIDORES[rep_id]
     
-    st.title(f"🛵 Panel de Entregas: {rep_nombre}")
+    st.title(f"🛵 Entregas: {rep_nombre}")
     st.caption("Gestiona tus carreras activas y cobros en tiempo real")
     
     mis_pedidos = [p for p in st.session_state.pedidos if p.get("repartidor_id") == rep_id and p.get("estado") != "ENTREGADO"]
     mis_completados = [p for p in st.session_state.pedidos if p.get("repartidor_id") == rep_id and p.get("estado") == "ENTREGADO"]
     
+    # Detección de nueva orden asignada para disparar alerta sonora y visual
+    clave_conteo = f"conteo_pendientes_{rep_id}"
+    conteo_actual = len(mis_pedidos)
+    conteo_previo = st.session_state.get(clave_conteo, conteo_actual)
+    
+    if conteo_actual > conteo_previo:
+        reproducir_alerta_sonora()
+        st.markdown("""
+            <div class="alerta-nueva-orden">
+                🔔 ¡NUEVA ORDEN ASIGNADA! Revisa los detalles abajo para despachar.
+            </div>
+        """, unsafe_allow_html=True)
+        st.toast("🔔 ¡Tienes un nuevo pedido asignado!", icon="🛵")
+    
+    st.session_state[clave_conteo] = conteo_actual
+
     ganancia_fletes = sum(p.get("flete", 0) for p in mis_completados)
-    st.metric("💵 Mis Fletes Ganados Hoy", f"${ganancia_fletes:,.0f} COP")
+    
+    c_met1, c_met2 = st.columns(2)
+    c_met1.metric("💵 Mis Fletes Ganados Hoy", f"${ganancia_fletes:,.0f} COP")
+    c_met2.metric("📦 Pedidos Pendientes", f"{len(mis_pedidos)}")
+    
+    # Botón para refrescar manualmente la pantalla en el celular
+    if st.button("🔄 Actualizar Mis Entregas"):
+        st.session_state.pedidos = cargar_pedidos()
+        st.rerun()
+    
     st.write("")
     
     if not mis_pedidos:

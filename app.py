@@ -32,13 +32,20 @@ def cargar_pedidos():
     return []
 
 def guardar_pedidos(lista_pedidos):
+    columnas = [
+        "id", "fecha", "fecha_entrega_pactada", "hora_entrega_pactada", "tipo_pedido", 
+        "cliente", "telefono", "direccion", "barrio", "zona", "flete", "detalle", 
+        "metodo_pago", "subtotal_comida", "total_cobrado", "paga_con", "estado", "repartidor_id"
+    ]
     if lista_pedidos:
         df = pd.DataFrame(lista_pedidos)
+        # Asegurar orden y presencia de todas las columnas de la base de datos
+        for col in columnas:
+            if col not in df.columns:
+                df[col] = ""
+        df = df[columnas]
         df.to_csv(CSV_FILE, index=False)
     else:
-        columnas = ["id", "fecha", "fecha_entrega_pactada", "hora_entrega_pactada", "tipo_pedido", 
-                    "cliente", "telefono", "direccion", "barrio", "zona", "flete", "detalle", 
-                    "metodo_pago", "subtotal_comida", "total_cobrado", "paga_con", "estado", "repartidor_id"]
         df_vacio = pd.DataFrame(columns=columnas)
         df_vacio.to_csv(CSV_FILE, index=False)
 
@@ -412,7 +419,9 @@ elif usuario_actual["rol"] == "ADMIN":
         "📊 Tablero Financiero y Descarga Excel"
     ])
     
+    # -----------------------------------------------------
     # TAB 1: DESPACHO INMEDIATO
+    # -----------------------------------------------------
     with tab_despacho:
         st.title("🖥️ Despacho de Pedidos Inmediatos")
         
@@ -558,10 +567,12 @@ elif usuario_actual["rol"] == "ADMIN":
                     st.link_button(f"💬 Notificar por WhatsApp a {p['cliente']} (#{p['id']})", url_whatsapp)
                 st.write("")
 
-    # TAB 2: PROGRAMADOS
+    # -----------------------------------------------------
+    # TAB 2: PEDIDOS PROGRAMADOS / PREVENTAS (CON WHATSAPP Y PERSISTENCIA)
+    # -----------------------------------------------------
     with tab_programados:
         st.title("📅 Pedidos Programados y Preventas")
-        st.caption("Agenda pedidos solicitados con anticipación y pásalos a ruta cuando corresponda.")
+        st.caption("Agenda pedidos anticipados, notifica al cliente por WhatsApp y despáchalos cuando corresponda.")
         
         with st.expander("➕ Agendar Nuevo Pedido para Otra Fecha", expanded=True):
             col_f1, col_f2 = st.columns(2)
@@ -611,7 +622,7 @@ elif usuario_actual["rol"] == "ADMIN":
                 📅 <b>Fecha Pactada:</b> {fecha_pactada.strftime('%d/%m/%Y')} a las {hora_pactada.strftime('%I:%M %p')}<br>
                 🥩 <b>Platos Encargados:</b> {detalle_prog_str}<br>
                 💵 <b>Subtotal Comida:</b> ${subtotal_prog:,.0f} COP | 🛵 <b>Flete:</b> ${costo_flete_prog:,.0f} COP | 
-                <span style="font-size: 1.15rem; color: #1d3557;"><b>TOTAL: ${total_prog:,.0f} COP</b></span>
+                <span style="font-size: 1.15rem; color: #1d3557;"><b>TOTAL A COBRAR: ${total_prog:,.0f} COP</b></span>
             </div>
             """, unsafe_allow_html=True)
             
@@ -624,7 +635,7 @@ elif usuario_actual["rol"] == "ADMIN":
                     base_m = float(total_prog) if total_prog > 0 else 0.0
                     paga_con_prog = st.number_input("Paga con billete de:", min_value=base_m, step=5000.0, value=base_m, key="p_billete")
 
-            if st.button("📌 Guardar Pedido en Agenda"):
+            if st.button("📌 Guardar Pedido en Agenda y Base de Datos"):
                 if not cli_prog_nom or not cli_prog_dir or not cantidades_prog:
                     st.error("Completa cliente, dirección y selecciona al menos 1 porción de plato para agendar.")
                 else:
@@ -651,7 +662,7 @@ elif usuario_actual["rol"] == "ADMIN":
                     }
                     st.session_state.pedidos.append(pedido_agendado)
                     guardar_pedidos(st.session_state.pedidos)
-                    st.success(f"🎉 ¡Pedido #{nuevo_id} agendado para el {fecha_pactada}!")
+                    st.success(f"🎉 ¡Pedido #{nuevo_id} guardado en la base de datos para el {fecha_pactada}!")
                     st.rerun()
 
         st.divider()
@@ -671,18 +682,37 @@ elif usuario_actual["rol"] == "ADMIN":
                 if filtro_agenda == "A partir de Mañana" and f_pactada <= hoy_str:
                     continue
                 
+                # Mensaje de WhatsApp 1: Confirmación de Reserva / Preventa
+                msg_preventa = (
+                    f"🥓 *¡Hola {p['cliente']}! Confirmamos tu pedido programado en El Súper Chicharronazo.*\n\n"
+                    f"📋 *Reserva #{p['id']}*\n"
+                    f"📅 *Fecha de Entrega:* {p.get('fecha_entrega_pactada')} a las {p.get('hora_entrega_pactada')}\n"
+                    f"🍽️ *Menú Encargado:* {p['detalle']}\n"
+                    f"💰 *Subtotal Comida:* ${p['subtotal_comida']:,.0f} COP\n"
+                    f"🛵 *Domicilio:* ${p['flete']:,.0f} COP\n"
+                    f"💵 *Total Acordado:* ${p['total_cobrado']:,.0f} COP ({p['metodo_pago']})\n\n"
+                    f"📍 *Dirección de Entrega:* {p['direccion']} ({p['barrio']})\n"
+                    f"¡Tu pedido ya quedó reservado en nuestro sistema!"
+                )
+                tel_formateado = formatear_telefono_co(p.get("telefono", ""))
+                url_wa_preventa = f"https://wa.me/{tel_formateado}?text={urllib.parse.quote(msg_preventa)}" if tel_formateado else None
+
                 st.markdown(f"""
                 <div class="card-programado">
-                    <span class="badge-agendado">📅 PARA: {p.get('fecha_entrega_pactada')} a las {p.get('hora_entrega_pactada')}</span>
+                    <span class="badge-agendado">📅 RESERVA PARA: {p.get('fecha_entrega_pactada')} ({p.get('hora_entrega_pactada')})</span>
                     <span style="float: right; font-weight: bold; color: #1d3557; font-size: 1.15rem;">${p['total_cobrado']:,.0f} COP</span>
                     <h3 style="margin: 8px 0 4px 0;">{p['cliente']} (Tel: {p['telefono']})</h3>
                     📍 <b>{p['direccion']}</b> ({p['barrio']}) - <i>{p.get('zona', 'Cali')}</i><br>
                     🍽️ <b>Menú Encargado:</b> {p['detalle']}<br>
                     💰 <b>Comida:</b> ${p['subtotal_comida']:,.0f} | 🛵 <b>Flete:</b> ${p['flete']:,.0f} | 💳 <b>Pago:</b> {p['metodo_pago']}<br>
-                    📌 <b>Estado actual:</b> {p['estado']}
+                    📌 <b>Estado en BD:</b> {p['estado']}
                 </div>
                 """, unsafe_allow_html=True)
+
+                if url_wa_preventa:
+                    st.link_button(f"💬 Enviar Confirmación de Reserva por WhatsApp a {p['cliente']} (#{p['id']})", url_wa_preventa)
                 
+                # Asignación y Despacho a Ruta con Notificación
                 col_desp1, col_desp2 = st.columns([1.5, 1])
                 with col_desp1:
                     rep_elegido = st.selectbox(
@@ -697,10 +727,13 @@ elif usuario_actual["rol"] == "ADMIN":
                         p["estado"] = "EN_RUTA"
                         p["repartidor_id"] = rep_elegido
                         guardar_pedidos(st.session_state.pedidos)
-                        st.success(f"¡Orden #{p['id']} despachada a {REPARTIDORES[rep_elegido]}!")
+                        st.success(f"¡Orden #{p['id']} despachada a {REPARTIDORES[rep_elegido]} y actualizada en BD!")
                         st.rerun()
+                st.divider()
 
-    # TAB 3: FINANZAS Y EXCEL
+    # -----------------------------------------------------
+    # TAB 3: TABLERO FINANCIERO Y DESCARGA EXCEL
+    # -----------------------------------------------------
     with tab_finanzas:
         st.title("📊 Tablero de Control y Liquidación")
         st.caption("Consolidado de ventas de hoy, fletes y liquidación de caja")

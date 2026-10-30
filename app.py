@@ -20,7 +20,6 @@ def cargar_pedidos():
     if os.path.exists(CSV_FILE):
         try:
             df = pd.read_csv(CSV_FILE)
-            # Asegurar compatibilidad de columnas nuevas
             if "fecha_entrega_pactada" not in df.columns:
                 df["fecha_entrega_pactada"] = df["fecha"].apply(lambda x: str(x)[:10] if pd.notna(x) else "")
             if "hora_entrega_pactada" not in df.columns:
@@ -36,6 +35,13 @@ def guardar_pedidos(lista_pedidos):
     if lista_pedidos:
         df = pd.DataFrame(lista_pedidos)
         df.to_csv(CSV_FILE, index=False)
+    else:
+        # Crea archivo vacío con encabezados
+        columnas = ["id", "fecha", "fecha_entrega_pactada", "hora_entrega_pactada", "tipo_pedido", 
+                    "cliente", "telefono", "direccion", "barrio", "zona", "flete", "detalle", 
+                    "metodo_pago", "subtotal_comida", "total_cobrado", "paga_con", "estado", "repartidor_id"]
+        df_vacio = pd.DataFrame(columns=columnas)
+        df_vacio.to_csv(CSV_FILE, index=False)
 
 def formatear_telefono_co(tel):
     if not tel:
@@ -76,12 +82,12 @@ def reproducir_alerta_sonora():
             osc2.start(now + 0.2);
             osc2.stop(now + 0.7);
         } catch (e) {
-            console.log("Audio no habilitado:", e);
+            console.log("Audio no disponible:", e);
         }
         </script>
     """, height=0)
 
-# 2. Estilos visuales
+# 2. Estilos visuales Rappi-Style
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
@@ -172,6 +178,22 @@ st.markdown("""
         margin-bottom: 16px;
         box-shadow: 0 4px 12px rgba(32, 0, 59, 0.2);
     }
+
+    /* Pestañas de módulos visibles arriba */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background-color: #ffffff;
+        padding: 8px;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 48px;
+        font-weight: bold;
+        font-size: 0.95rem;
+        border-radius: 8px;
+        padding: 0 16px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -250,10 +272,11 @@ if not st.session_state.autenticado:
     st.stop()
 
 # =========================================================
-# USUARIO ACTIVO
+# SESIÓN ACTIVA
 # =========================================================
 usuario_actual = st.session_state.usuario_activo
 
+# Barra lateral
 if LOGO_PATH:
     st.sidebar.image(LOGO_PATH, width=110)
 st.sidebar.markdown(f"👤 **{usuario_actual['nombre']}**")
@@ -266,7 +289,7 @@ if st.sidebar.button("Cerrar Sesión"):
     st.rerun()
 
 # =========================================================
-# MÓDULO DOMICILIARIOS
+# MÓDULO EXCLUSIVO DOMICILIARIOS
 # =========================================================
 if usuario_actual["rol"] == "DOMICILIARIO":
     rep_id = usuario_actual["rep_id"]
@@ -275,7 +298,6 @@ if usuario_actual["rol"] == "DOMICILIARIO":
     st.title(f"🛵 Entregas: {rep_nombre}")
     st.caption("Gestiona tus carreras activas y cobros en tiempo real")
     
-    # Solo pedidos en ruta (no agendados a futuro)
     mis_pedidos = [p for p in st.session_state.pedidos if p.get("repartidor_id") == rep_id and p.get("estado") == "EN_RUTA"]
     mis_completados = [p for p in st.session_state.pedidos if p.get("repartidor_id") == rep_id and p.get("estado") == "ENTREGADO"]
     
@@ -297,7 +319,7 @@ if usuario_actual["rol"] == "DOMICILIARIO":
     ganancia_fletes = sum(p.get("flete", 0) for p in mis_completados)
     
     c_met1, c_met2 = st.columns(2)
-    c_met1.metric("💵 Mis Fletes Ganados", f"${ganancia_fletes:,.0f} COP")
+    c_met1.metric("💵 Mis Fletes Ganados Hoy", f"${ganancia_fletes:,.0f} COP")
     c_met2.metric("📦 Pedidos Pendientes", f"{len(mis_pedidos)}")
     
     if st.button("🔄 Actualizar Mis Entregas"):
@@ -324,7 +346,7 @@ if usuario_actual["rol"] == "DOMICILIARIO":
             
             if p["metodo_pago"] == "EFECTIVO":
                 vueltos = p["paga_con"] - p["total_cobrado"] if p["paga_con"] > p["total_cobrado"] else 0
-                st.warning(f"💵 COBRAR EN EFECTIVO: ${p['total_cobrado']:,.0f} COP (Paga con: ${p['paga_con']:,.0f} | Cambio: ${vueltos:,.0f} COP)")
+                st.warning(f"💵 COBRAR EN EFECTIVO: ${p['total_cobrado']:,.0f} COP (Paga con: ${p['paga_con']:,.0f} | Cambio a dar: ${vueltos:,.0f} COP)")
             else:
                 st.success("✅ PAGADO POR NEQUI (No cobrar dinero)")
                 
@@ -341,18 +363,20 @@ if usuario_actual["rol"] == "DOMICILIARIO":
             st.divider()
 
 # =========================================================
-# MÓDULO ADMINISTRADOR (CRISTINA)
+# MÓDULO EXCLUSIVO ADMINISTRADOR (CRISTINA)
 # =========================================================
 elif usuario_actual["rol"] == "ADMIN":
-    vista_admin = st.sidebar.radio(
-        "Módulo Administrativo:",
-        ["🖥️ Despacho de Pedidos", "📅 Pedidos Programados / Preventas", "📊 Tablero Financiero y Caja"]
-    )
+    # PESTAÑAS VISIBLES EN PANTALLA PRINCIPAL (Nunca se esconden)
+    tab_despacho, tab_programados, tab_finanzas = st.tabs([
+        "🖥️ Despacho Inmediato", 
+        "📅 Pedidos Programados / Preventas", 
+        "📊 Tablero Financiero y Descarga Excel"
+    ])
     
     # -----------------------------------------------------
-    # SUBVISTA 1: DESPACHO NORMAL (HOY)
+    # TAB 1: DESPACHO INMEDIATO
     # -----------------------------------------------------
-    if vista_admin == "🖥️ Despacho de Pedidos":
+    with tab_despacho:
         st.title("🖥️ Despacho de Pedidos Inmediatos")
         
         st.markdown(f"""
@@ -473,9 +497,9 @@ elif usuario_actual["rol"] == "ADMIN":
                 st.write("")
 
     # -----------------------------------------------------
-    # SUBVISTA 2: NUEVO MÓDULO DE PEDIDOS PROGRAMADOS
+    # TAB 2: PEDIDOS PROGRAMADOS / PREVENTAS
     # -----------------------------------------------------
-    elif vista_admin == "📅 Pedidos Programados / Preventas":
+    with tab_programados:
         st.title("📅 Pedidos Programados y Preventas")
         st.caption("Agenda pedidos solicitados con anticipación y pásalos a ruta cuando corresponda.")
         
@@ -543,13 +567,11 @@ elif usuario_actual["rol"] == "ADMIN":
                     }
                     st.session_state.pedidos.append(pedido_agendado)
                     guardar_pedidos(st.session_state.pedidos)
-                    st.success(f"🎉 ¡Pedido #{nuevo_id} agendado exitosamente para el {fecha_pactada}!")
+                    st.success(f"🎉 ¡Pedido #{nuevo_id} agendado para el {fecha_pactada}!")
                     st.rerun()
 
-        # Seguimiento de agenda
         st.divider()
         st.subheader("📋 Agenda de Pedidos por Entregar")
-        
         pedidos_agendados = [p for p in st.session_state.pedidos if p.get("estado") == "AGENDADO"]
         
         if not pedidos_agendados:
@@ -577,7 +599,6 @@ elif usuario_actual["rol"] == "ADMIN":
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # Asignar y despachar
                 col_desp1, col_desp2 = st.columns([1.5, 1])
                 with col_desp1:
                     rep_elegido = st.selectbox(
@@ -596,20 +617,19 @@ elif usuario_actual["rol"] == "ADMIN":
                         st.rerun()
 
     # -----------------------------------------------------
-    # SUBVISTA 3: TABLERO FINANCIERO
+    # TAB 3: TABLERO FINANCIERO Y DESCARGA EXCEL
     # -----------------------------------------------------
-    else:
+    with tab_finanzas:
         st.title("📊 Tablero de Control y Liquidación")
-        st.caption("Consolidado en tiempo real de ventas, pagos a repartidores y márgenes")
+        st.caption("Consolidado de ventas de hoy, fletes y liquidación de caja")
 
-        st.link_button("📂 Abrir Hoja en Google Drive", LINK_GOOGLE_SHEETS)
+        st.link_button("📂 Abrir Hoja Oficial en Google Drive", LINK_GOOGLE_SHEETS)
         st.write("")
 
-        # Consideramos únicamente los pedidos que están en ruta o entregados para el balance contable real
         pedidos_reales = [p for p in st.session_state.pedidos if p.get("estado") in ["EN_RUTA", "ENTREGADO"]]
 
         if not pedidos_reales:
-            st.warning("Aún no hay pedidos en ruta o entregados para balance contable.")
+            st.warning("Aún no hay pedidos en ruta o entregados hoy para generar el balance contable.")
         else:
             df = pd.DataFrame(pedidos_reales)
             
@@ -632,14 +652,15 @@ elif usuario_actual["rol"] == "ADMIN":
                 k1, k2, k3, k4 = st.columns(4)
                 k1.metric("💰 Total Recaudado", f"${total_caja:,.0f} COP")
                 k2.metric("🥩 Venta Neta Comida", f"${total_comida:,.0f} COP")
-                k3.metric("🛵 Total Fletes", f"${total_fletes:,.0f} COP")
-                k4.metric("📈 Margen Comida", f"{margen:.1f}%")
+                k3.metric("🛵 Total Fletes Repartidores", f"${total_fletes:,.0f} COP")
+                k4.metric("📈 Margen Operativo Comida", f"{margen:.1f}%")
                 
+                # BOTÓN DE DESCARGA DIRECTA
                 csv_data = df_calc.to_csv(index=False).encode('utf-8')
                 st.download_button(
                     label="📥 Descargar Base de Datos Completa (Excel / CSV)",
                     data=csv_data,
-                    file_name=f"pedidos_superchicharronazo_{datetime.now().strftime('%Y%m%d')}.csv",
+                    file_name=f"ventas_superchicharronazo_{datetime.now().strftime('%Y%m%d')}.csv",
                     mime="text/csv"
                 )
                 

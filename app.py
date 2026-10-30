@@ -269,10 +269,13 @@ REPARTIDORES = {
     6: "Yango (Moto 6)"
 }
 
-# Credenciales de Acceso
 USUARIOS_AUTORIZADOS = {
     "cristina": {"nombre": "Cristina", "clave": "cris2026", "rol": "ADMIN", "rep_id": None},
     "catalina": {"nombre": "Catalina", "clave": "cata2026", "rol": "ADMIN", "rep_id": None},
     "xavier": {"nombre": "Xavier", "clave": "xavi2026", "rol": "DOMICILIARIO", "rep_id": 1},
     "carlos": {"nombre": "Carlos", "clave": "car2026", "rol": "DOMICILIARIO", "rep_id": 2},
-    "andres": {"nombre": "Andrés", "clave": "and2026", "rol": "DOMICILI
+    "andres": {"nombre": "Andrés", "clave": "and2026", "rol": "DOMICILIARIO", "rep_id": 3},
+    "diego": {"nombre": "Diego", "clave": "die2026", "rol": "DOMICILIARIO", "rep_id": 4},
+    "gustavo": {"nombre": "Gustavo", "clave": "gus2026", "rol": "DOMICILIARIO", "rep_id": 5},
+    "yango": {"nombre": "Yango", "clave": "yan2026", "rol": "DOMICILIARIO", "rep_id": 6}
+}

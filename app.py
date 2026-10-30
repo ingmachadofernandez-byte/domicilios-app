@@ -3,7 +3,9 @@ import pandas as pd
 import urllib.parse
 import os
 import re
+import shutil
 from datetime import datetime, date, time
+from streamlit_gsheets import GSheetsConnection
 
 # 1. Configuración de pantalla Mobile First
 st.set_page_config(
@@ -13,40 +15,83 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Archivo de persistencia de datos (permanente)
+# Rutas de persistencia y copias de seguridad
 CSV_FILE = "pedidos.csv"
+BACKUP_DIR = "backups"
+os.makedirs(BACKUP_DIR, exist_ok=True)
+
+COLUMNAS_BD = [
+    "id", "fecha", "fecha_entrega_pactada", "hora_entrega_pactada", "tipo_pedido", 
+    "cliente", "telefono", "direccion", "barrio", "zona", "flete", "detalle", 
+    "metodo_pago", "subtotal_comida", "total_cobrado", "paga_con", "estado", "repartidor_id"
+]
+
+def respaldar_hora_a_hora():
+    """Genera una copia de seguridad timestamped por hora en la carpeta backups."""
+    if os.path.exists(CSV_FILE) and os.path.getsize(CSV_FILE) > 0:
+        stamp_hora = datetime.now().strftime("%Y%m%d_%H00")
+        backup_path = os.path.join(BACKUP_DIR, f"pedidos_backup_{stamp_hora}.csv")
+        shutil.copyfile(CSV_FILE, backup_path)
 
 def cargar_pedidos():
+    """Carga pedidos desde Google Sheets (la nube permanente) o fallback local."""
+    # 1. Intentar cargar desde Google Sheets
+    try:
+        conn = st.connection("gsheets", type=GSheetsConnection)
+        df_cloud = conn.read(ttl="0s")
+        if df_cloud is not None and not df_cloud.empty:
+            for c in COLUMNAS_BD:
+                if c not in df_cloud.columns:
+                    df_cloud[c] = ""
+            registros = df_cloud[COLUMNAS_BD].to_dict(orient="records")
+            df_cloud[COLUMNAS_BD].to_csv(CSV_FILE, index=False)
+            return registros
+    except Exception:
+        pass
+
+    # 2. Respaldo local
     if os.path.exists(CSV_FILE):
         try:
             df = pd.read_csv(CSV_FILE)
-            if "fecha_entrega_pactada" not in df.columns:
-                df["fecha_entrega_pactada"] = df["fecha"].apply(lambda x: str(x)[:10] if pd.notna(x) else "")
-            if "hora_entrega_pactada" not in df.columns:
-                df["hora_entrega_pactada"] = "Inmediata"
-            if "tipo_pedido" not in df.columns:
-                df["tipo_pedido"] = "INMEDIATO"
+            for c in COLUMNAS_BD:
+                if c not in df.columns:
+                    df[c] = ""
+            return df.to_dict(orient="records")
+        except Exception:
+            pass
+
+    # 3. Intentar recuperar desde el último backup
+    backups = sorted([f for f in os.listdir(BACKUP_DIR) if f.endswith(".csv")])
+    if backups:
+        try:
+            ultimo = os.path.join(BACKUP_DIR, backups[-1])
+            df = pd.read_csv(ultimo)
             return df.to_dict(orient="records")
         except Exception:
             return []
     return []
 
 def guardar_pedidos(lista_pedidos):
-    columnas = [
-        "id", "fecha", "fecha_entrega_pactada", "hora_entrega_pactada", "tipo_pedido", 
-        "cliente", "telefono", "direccion", "barrio", "zona", "flete", "detalle", 
-        "metodo_pago", "subtotal_comida", "total_cobrado", "paga_con", "estado", "repartidor_id"
-    ]
+    """Guarda en CSV local, genera backup y sincroniza en Google Sheets."""
     if lista_pedidos:
         df = pd.DataFrame(lista_pedidos)
-        # Asegurar orden y presencia de todas las columnas de la base de datos
-        for col in columnas:
+        for col in COLUMNAS_BD:
             if col not in df.columns:
                 df[col] = ""
-        df = df[columnas]
+        df = df[COLUMNAS_BD]
+        
+        # Guardar local y backup
         df.to_csv(CSV_FILE, index=False)
+        respaldar_hora_a_hora()
+
+        # Guardar en Google Sheets oficial
+        try:
+            conn = st.connection("gsheets", type=GSheetsConnection)
+            conn.update(data=df)
+        except Exception as e:
+            st.warning(f"Guardado localmente. Sincronización en Google Sheets pendiente: {e}")
     else:
-        df_vacio = pd.DataFrame(columns=columnas)
+        df_vacio = pd.DataFrame(columns=COLUMNAS_BD)
         df_vacio.to_csv(CSV_FILE, index=False)
 
 def formatear_telefono_co(tel):
@@ -87,9 +132,7 @@ def reproducir_alerta_sonora():
             gain2.connect(ctx.destination);
             osc2.start(now + 0.2);
             osc2.stop(now + 0.7);
-        } catch (e) {
-            console.log("Audio no disponible:", e);
-        }
+        } catch (e) {}
         </script>
     """, height=0)
 
@@ -102,7 +145,6 @@ st.markdown("""
         font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
         background-color: #F8F9FA !important;
         color: #1A1D20 !important;
-        -webkit-font-smoothing: antialiased;
     }
 
     #MainMenu {visibility: hidden;}
@@ -110,7 +152,7 @@ st.markdown("""
     header {visibility: hidden;}
 
     .block-container {
-        padding-top: 1.5rem !important;
+        padding-top: 1.2rem !important;
         padding-bottom: 3rem !important;
         padding-left: 1rem !important;
         padding-right: 1rem !important;
@@ -123,7 +165,6 @@ st.markdown("""
         background: #ECEFF1;
         padding: 5px;
         border-radius: 14px;
-        border: none;
         box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);
     }
     
@@ -136,16 +177,15 @@ st.markdown("""
         font-weight: 700;
         font-size: 0.88rem;
         border: none;
-        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         text-align: center;
         justify-content: center;
-        padding: 0 10px;
+        padding: 0 8px;
     }
 
     .stTabs [aria-selected="true"] {
         background-color: #FFFFFF !important;
         color: #1A1D20 !important;
-        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08) !important;
     }
 
     .stButton>button {
@@ -153,18 +193,11 @@ st.markdown("""
         height: 3.2rem;
         font-size: 0.95rem;
         font-weight: 700;
-        letter-spacing: 0.3px;
         border-radius: 14px;
         background: linear-gradient(135deg, #B8001F 0%, #880808 100%) !important;
         color: #FFFFFF !important;
         border: none !important;
         box-shadow: 0 6px 18px rgba(184, 0, 31, 0.28) !important;
-        transition: all 0.2s ease;
-    }
-
-    .stButton>button:active {
-        transform: scale(0.98);
-        box-shadow: 0 2px 8px rgba(184, 0, 31, 0.2) !important;
     }
 
     .rappi-card {
@@ -193,7 +226,6 @@ st.markdown("""
         border-radius: 20px;
         font-size: 0.78rem;
         font-weight: 700;
-        letter-spacing: 0.5px;
         text-transform: uppercase;
         display: inline-block;
     }
@@ -216,33 +248,6 @@ st.markdown("""
         text-align: center;
         margin-bottom: 18px;
         box-shadow: 0 6px 20px rgba(28, 10, 53, 0.25);
-    }
-
-    .alerta-nueva-orden {
-        background: linear-gradient(135deg, #B8001F 0%, #D32F2F 100%);
-        color: #FFFFFF;
-        padding: 16px;
-        border-radius: 16px;
-        text-align: center;
-        font-size: 1rem;
-        font-weight: 700;
-        margin-bottom: 16px;
-        box-shadow: 0 8px 24px rgba(184, 0, 31, 0.35);
-        animation: pulseSubtle 2s infinite;
-    }
-
-    @keyframes pulseSubtle {
-        0% { transform: scale(1); }
-        50% { transform: scale(1.015); }
-        100% { transform: scale(1); }
-    }
-
-    div[data-testid="stMetric"] {
-        background: #FFFFFF;
-        padding: 14px 16px;
-        border-radius: 16px;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
-        border: 1px solid #EAECEF;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -276,7 +281,7 @@ REPARTIDORES = {
     6: "Yango (Moto 6)"
 }
 
-# Credenciales de Acceso Completas
+# Credenciales de Acceso
 USUARIOS_AUTORIZADOS = {
     "cristina": {"nombre": "Cristina", "clave": "cris2026", "rol": "ADMIN", "rep_id": None},
     "catalina": {"nombre": "Catalina", "clave": "cata2026", "rol": "ADMIN", "rep_id": None},
@@ -354,11 +359,6 @@ if usuario_actual["rol"] == "DOMICILIARIO":
     
     if conteo_actual > conteo_previo:
         reproducir_alerta_sonora()
-        st.markdown("""
-            <div class="alerta-nueva-orden">
-                🔔 ¡NUEVA ORDEN ASIGNADA! Revisa los detalles abajo para despachar.
-            </div>
-        """, unsafe_allow_html=True)
         st.toast("🔔 ¡Tienes un nuevo pedido asignado!", icon="🛵")
     
     st.session_state[clave_conteo] = conteo_actual
@@ -435,7 +435,7 @@ elif usuario_actual["rol"] == "ADMIN":
             col_c1, col_c2 = st.columns(2)
             with col_c1:
                 cliente_nom = st.text_input("Nombre del Cliente:", placeholder="Ej: Camila Ortiz")
-                cliente_tel = st.text_input("Teléfono WhatsApp:", placeholder="Ej: 3112345678")
+                cliente_tel = st.text_input("Teléfono WhatsApp (10 dígitos):", placeholder="Ej: 3112345678")
                 cliente_dir = st.text_input("Dirección de Entrega:", placeholder="Ej: Cra 66 # 10-45")
                 cliente_barrio = st.text_input("Barrio:", placeholder="Ej: Limonar")
             
@@ -445,8 +445,7 @@ elif usuario_actual["rol"] == "ADMIN":
                     min_value=0,
                     max_value=20000,
                     value=6000,
-                    step=1000,
-                    help="Ingresa 0 para recoger en punto, o el valor acordado entre 0 y 20.000"
+                    step=1000
                 )
                 zona_elegida = st.text_input("Zona / Sector / Comuna:", placeholder="Ej: San Fernando / Comuna 17")
                 
@@ -457,7 +456,6 @@ elif usuario_actual["rol"] == "ADMIN":
                 )
 
             st.markdown("#### 🍽️ Selección de Platos y Cantidades")
-            
             cantidades_orden = {}
             cols_menu = st.columns(3)
             idx = 0
@@ -477,12 +475,11 @@ elif usuario_actual["rol"] == "ADMIN":
             
             subtotal_comida = sum(MENU_PRODUCTOS[plato] * cant for plato, cant in cantidades_orden.items())
             total_a_cobrar = subtotal_comida + costo_flete
-            
-            detalle_platos_str = ", ".join([f"{cant}x {plato}" for plato, cant in cantidades_orden.items()]) if cantidades_orden else "Ningún plato seleccionado"
+            detalle_platos_str = ", ".join([f"{cant}x {plato}" for plato, cant in cantidades_orden.items()]) if cantidades_orden else ""
             
             st.markdown(f"""
             <div style="background-color: #fff3cd; padding: 14px; border-radius: 12px; border-left: 5px solid #ffb703; margin: 12px 0;">
-                🥩 <b>Platos seleccionados:</b> {detalle_platos_str}<br>
+                🥩 <b>Platos seleccionados:</b> {detalle_platos_str if detalle_platos_str else 'Ninguno'}<br>
                 💵 <b>Subtotal Comida:</b> ${subtotal_comida:,.0f} COP | 🛵 <b>Flete:</b> ${costo_flete:,.0f} COP | 
                 <span style="font-size: 1.15rem; color: #D90429;"><b>TOTAL A COBRAR: ${total_a_cobrar:,.0f} COP</b></span>
             </div>
@@ -527,7 +524,7 @@ elif usuario_actual["rol"] == "ADMIN":
                     }
                     st.session_state.pedidos.append(nuevo_pedido)
                     guardar_pedidos(st.session_state.pedidos)
-                    st.success(f"✅ ¡Pedido #{nuevo_id} generado con éxito ({detalle_platos_str})!")
+                    st.success(f"✅ ¡Pedido #{nuevo_id} guardado en BD y asignado a {REPARTIDORES[domiciliario_asig]}!")
                     st.rerun()
 
         st.subheader("📋 Pedidos del Turno (Activos y Entregados)")
@@ -564,15 +561,15 @@ elif usuario_actual["rol"] == "ADMIN":
                 """, unsafe_allow_html=True)
                 
                 if url_whatsapp:
-                    st.link_button(f"💬 Notificar por WhatsApp a {p['cliente']} (#{p['id']})", url_whatsapp)
+                    st.link_button(f"💬 Confirmar y Notificar WhatsApp a {p['cliente']} (#{p['id']})", url_whatsapp)
                 st.write("")
 
     # -----------------------------------------------------
-    # TAB 2: PEDIDOS PROGRAMADOS / PREVENTAS (CON WHATSAPP Y PERSISTENCIA)
+    # TAB 2: PEDIDOS PROGRAMADOS / PREVENTAS
     # -----------------------------------------------------
     with tab_programados:
         st.title("📅 Pedidos Programados y Preventas")
-        st.caption("Agenda pedidos anticipados, notifica al cliente por WhatsApp y despáchalos cuando corresponda.")
+        st.caption("Agenda pedidos anticipados con confirmación obligatoria por WhatsApp y respaldo en BD.")
         
         with st.expander("➕ Agendar Nuevo Pedido para Otra Fecha", expanded=True):
             col_f1, col_f2 = st.columns(2)
@@ -580,7 +577,7 @@ elif usuario_actual["rol"] == "ADMIN":
                 fecha_pactada = st.date_input("Fecha de entrega pactada:", min_value=date.today())
                 hora_pactada = st.time_input("Hora aproximada de entrega:", value=time(13, 0))
                 cli_prog_nom = st.text_input("Nombre del Cliente:", key="p_nom", placeholder="Ej: Andrés Restrepo")
-                cli_prog_tel = st.text_input("Teléfono WhatsApp:", key="p_tel", placeholder="Ej: 3158889900")
+                cli_prog_tel = st.text_input("Teléfono WhatsApp (10 dígitos):", key="p_tel", placeholder="Ej: 3158889900")
             
             with col_f2:
                 cli_prog_dir = st.text_input("Dirección de Entrega:", key="p_dir", placeholder="Ej: Calle 14 # 85-20")
@@ -615,12 +612,12 @@ elif usuario_actual["rol"] == "ADMIN":
 
             subtotal_prog = sum(MENU_PRODUCTOS[plato] * cant for plato, cant in cantidades_prog.items())
             total_prog = subtotal_prog + costo_flete_prog
-            detalle_prog_str = ", ".join([f"{cant}x {plato}" for plato, cant in cantidades_prog.items()]) if cantidades_prog else "Ningún plato seleccionado"
+            detalle_prog_str = ", ".join([f"{cant}x {plato}" for plato, cant in cantidades_prog.items()]) if cantidades_prog else ""
 
             st.markdown(f"""
             <div style="background-color: #e8f0fe; padding: 12px; border-radius: 10px; border-left: 5px solid #3a86ff; margin: 10px 0;">
                 📅 <b>Fecha Pactada:</b> {fecha_pactada.strftime('%d/%m/%Y')} a las {hora_pactada.strftime('%I:%M %p')}<br>
-                🥩 <b>Platos Encargados:</b> {detalle_prog_str}<br>
+                🥩 <b>Platos Encargados:</b> {detalle_prog_str if detalle_prog_str else 'Ninguno'}<br>
                 💵 <b>Subtotal Comida:</b> ${subtotal_prog:,.0f} COP | 🛵 <b>Flete:</b> ${costo_flete_prog:,.0f} COP | 
                 <span style="font-size: 1.15rem; color: #1d3557;"><b>TOTAL A COBRAR: ${total_prog:,.0f} COP</b></span>
             </div>
@@ -662,7 +659,7 @@ elif usuario_actual["rol"] == "ADMIN":
                     }
                     st.session_state.pedidos.append(pedido_agendado)
                     guardar_pedidos(st.session_state.pedidos)
-                    st.success(f"🎉 ¡Pedido #{nuevo_id} guardado en la base de datos para el {fecha_pactada}!")
+                    st.success(f"🎉 ¡Pedido #{nuevo_id} guardado en BD con respaldo horario!")
                     st.rerun()
 
         st.divider()
@@ -682,7 +679,7 @@ elif usuario_actual["rol"] == "ADMIN":
                 if filtro_agenda == "A partir de Mañana" and f_pactada <= hoy_str:
                     continue
                 
-                # Mensaje de WhatsApp 1: Confirmación de Reserva / Preventa
+                # Mensaje de WhatsApp obligatorio para confirmar preventa
                 msg_preventa = (
                     f"🥓 *¡Hola {p['cliente']}! Confirmamos tu pedido programado en El Súper Chicharronazo.*\n\n"
                     f"📋 *Reserva #{p['id']}*\n"
@@ -692,27 +689,26 @@ elif usuario_actual["rol"] == "ADMIN":
                     f"🛵 *Domicilio:* ${p['flete']:,.0f} COP\n"
                     f"💵 *Total Acordado:* ${p['total_cobrado']:,.0f} COP ({p['metodo_pago']})\n\n"
                     f"📍 *Dirección de Entrega:* {p['direccion']} ({p['barrio']})\n"
-                    f"¡Tu pedido ya quedó reservado en nuestro sistema!"
+                    f"¡Tu orden ya está registrada y agendada con éxito!"
                 )
                 tel_formateado = formatear_telefono_co(p.get("telefono", ""))
                 url_wa_preventa = f"https://wa.me/{tel_formateado}?text={urllib.parse.quote(msg_preventa)}" if tel_formateado else None
 
                 st.markdown(f"""
                 <div class="card-programado">
-                    <span class="badge-agendado">📅 RESERVA PARA: {p.get('fecha_entrega_pactada')} ({p.get('hora_entrega_pactada')})</span>
+                    <span class="badge-agendado">📅 RESERVA: {p.get('fecha_entrega_pactada')} ({p.get('hora_entrega_pactada')})</span>
                     <span style="float: right; font-weight: bold; color: #1d3557; font-size: 1.15rem;">${p['total_cobrado']:,.0f} COP</span>
                     <h3 style="margin: 8px 0 4px 0;">{p['cliente']} (Tel: {p['telefono']})</h3>
                     📍 <b>{p['direccion']}</b> ({p['barrio']}) - <i>{p.get('zona', 'Cali')}</i><br>
-                    🍽️ <b>Menú Encargado:</b> {p['detalle']}<br>
+                    🍽️ <b>Menú:</b> {p['detalle']}<br>
                     💰 <b>Comida:</b> ${p['subtotal_comida']:,.0f} | 🛵 <b>Flete:</b> ${p['flete']:,.0f} | 💳 <b>Pago:</b> {p['metodo_pago']}<br>
-                    📌 <b>Estado en BD:</b> {p['estado']}
+                    📌 <b>Estado:</b> {p['estado']}
                 </div>
                 """, unsafe_allow_html=True)
 
                 if url_wa_preventa:
-                    st.link_button(f"💬 Enviar Confirmación de Reserva por WhatsApp a {p['cliente']} (#{p['id']})", url_wa_preventa)
+                    st.link_button(f"💬 Confirmar Preventa por WhatsApp a {p['cliente']} (#{p['id']})", url_wa_preventa)
                 
-                # Asignación y Despacho a Ruta con Notificación
                 col_desp1, col_desp2 = st.columns([1.5, 1])
                 with col_desp1:
                     rep_elegido = st.selectbox(
@@ -727,19 +723,23 @@ elif usuario_actual["rol"] == "ADMIN":
                         p["estado"] = "EN_RUTA"
                         p["repartidor_id"] = rep_elegido
                         guardar_pedidos(st.session_state.pedidos)
-                        st.success(f"¡Orden #{p['id']} despachada a {REPARTIDORES[rep_elegido]} y actualizada en BD!")
+                        st.success(f"¡Orden #{p['id']} despachada a {REPARTIDORES[rep_elegido]}!")
                         st.rerun()
                 st.divider()
 
     # -----------------------------------------------------
-    # TAB 3: TABLERO FINANCIERO Y DESCARGA EXCEL
+    # TAB 3: FINANZAS Y EXCEL
     # -----------------------------------------------------
     with tab_finanzas:
         st.title("📊 Tablero de Control y Liquidación")
-        st.caption("Consolidado de ventas de hoy, fletes y liquidación de caja")
+        st.caption("Consolidado de ventas de hoy, fletes y liquidación de caja con respaldo hora a hora")
 
         st.link_button("📂 Abrir Hoja Oficial en Google Drive", LINK_GOOGLE_SHEETS)
         st.write("")
+
+        backups_list = sorted([f for f in os.listdir(BACKUP_DIR) if f.endswith(".csv")], reverse=True)
+        if backups_list:
+            st.caption(f"🛡️ **Último respaldo automático:** `{backups_list[0]}` (Total respaldos: {len(backups_list)})")
 
         pedidos_reales = [p for p in st.session_state.pedidos if p.get("estado") in ["EN_RUTA", "ENTREGADO"]]
 
@@ -747,7 +747,6 @@ elif usuario_actual["rol"] == "ADMIN":
             st.warning("Aún no hay pedidos en ruta o entregados hoy para generar el balance contable.")
         else:
             df = pd.DataFrame(pedidos_reales)
-            
             hoy_str = date.today().strftime("%Y-%m-%d")
             ver_solo_hoy = st.checkbox("📅 Ver únicamente ventas ejecutadas hoy", value=True)
             
@@ -774,14 +773,12 @@ elif usuario_actual["rol"] == "ADMIN":
                 st.download_button(
                     label="📥 Descargar Base de Datos Completa (Excel / CSV)",
                     data=csv_data,
-                    file_name=f"ventas_superchicharronazo_{datetime.now().strftime('%Y%m%d')}.csv",
+                    file_name=f"ventas_superchicharronazo_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                     mime="text/csv"
                 )
                 
                 st.divider()
-                
                 c_zona, c_rep = st.columns([1, 1.2])
-                
                 with c_zona:
                     st.subheader("📍 Domicilios por Zona / Sector")
                     res_zona = df_calc.groupby("zona").agg(
@@ -790,7 +787,6 @@ elif usuario_actual["rol"] == "ADMIN":
                         Total_Fletes=("flete", "sum"),
                         Venta_Comida=("subtotal_comida", "sum")
                     ).reset_index()
-                    
                     st.dataframe(
                         res_zona.rename(columns={
                             "zona": "Zona / Sector",
@@ -802,7 +798,6 @@ elif usuario_actual["rol"] == "ADMIN":
                         use_container_width=True,
                         hide_index=True
                     )
-
                 with c_rep:
                     st.subheader("💵 Liquidación a Repartidores")
                     liq_data = []
@@ -812,7 +807,6 @@ elif usuario_actual["rol"] == "ADMIN":
                         fletes_a_pagar = ped_r["flete"].sum()
                         efectivo_en_mano = ped_r[(ped_r["metodo_pago"] == "EFECTIVO") & (ped_r["estado"] == "ENTREGADO")]["total_cobrado"].sum()
                         debe_entregar_a_caja = efectivo_en_mano - fletes_a_pagar
-                        
                         liq_data.append({
                             "Repartidor": r_nom,
                             "Viajes": carreras,
@@ -820,7 +814,6 @@ elif usuario_actual["rol"] == "ADMIN":
                             "Efectivo Recaudado": efectivo_en_mano,
                             "Cuadre a Caja": debe_entregar_a_caja
                         })
-                        
                     df_liq = pd.DataFrame(liq_data)
                     st.dataframe(
                         df_liq.style.format({

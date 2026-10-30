@@ -44,6 +44,10 @@ def render_domiciliario(usuario_actual):
             dir_url = urllib.parse.quote(f"{p.get('Dirección')}, {p.get('Barrio')}, Cali")
             total_cobrado = float(p.get("Total Cobrado ($)", 0))
             flete = float(p.get("Flete ($)", 0))
+            metodo_pago = str(p.get("Método de Pago", "EFECTIVO")).upper().strip()
+            
+            paga_con = float(p.get("paga_con", 0) or p.get("Paga Con ($)", 0) or total_cobrado)
+            vueltos = (paga_con - total_cobrado) if paga_con > total_cobrado else 0.0
             
             st.markdown(f"""
             <div class="rappi-card">
@@ -56,10 +60,15 @@ def render_domiciliario(usuario_actual):
             </div>
             """, unsafe_allow_html=True)
             
-            if p.get("Método de Pago") == "EFECTIVO":
-                st.warning(f"💵 COBRAR EN EFECTIVO: ${total_cobrado:,.0f} COP")
+            # Bloque visual de Método de Pago según el tipo
+            if "EFECTIVO" in metodo_pago:
+                st.warning(f"💵 **COBRAR EN EFECTIVO:** ${total_cobrado:,.0f} COP\n\n"
+                           f"👉 El cliente paga con: **${paga_con:,.0f} COP** | **Dar de cambio:** **${vueltos:,.0f} COP**")
+            elif "DATAFONO" in metodo_pago or "DATÁFONO" in metodo_pago:
+                st.info(f"💳 **COBRAR CON DATÁFONO:** ${total_cobrado:,.0f} COP\n\n"
+                        f"👉 Llevar el datáfono para cobro con tarjeta física/digital.")
             else:
-                st.success("✅ PAGADO POR NEQUI (No cobrar dinero)")
+                st.success(f"✅ **PAGADO POR NEQUI:** ${total_cobrado:,.0f} COP (No cobrar dinero al cliente)")
                 
             c1, c2, c3 = st.columns(3)
             with c1: st.link_button("🚗 Waze", f"https://waze.com/ul?q={dir_url}&navigate=yes")
@@ -72,4 +81,3 @@ def render_domiciliario(usuario_actual):
                 guardar_pedidos(st.session_state.pedidos)
                 st.rerun()
             st.divider()
-            

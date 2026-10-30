@@ -52,7 +52,7 @@ def render_despacho():
         
         col_p1, col_p2 = st.columns(2)
         with col_p1:
-            metodo_pago = st.selectbox("Método de Pago:", ["NEQUI", "EFECTIVO"])
+            metodo_pago = st.selectbox("Método de Pago:", ["NEQUI", "EFECTIVO", "DATAFONO"])
         with col_p2:
             paga_con = 0.0
             if metodo_pago == "EFECTIVO":
@@ -61,7 +61,7 @@ def render_despacho():
                 vueltos_calc = paga_con - total_a_cobrar
                 st.caption(f"👉 **Vueltos para el repartidor:** ${vueltos_calc:,.0f} COP")
 
-        if st.button("🚀 Enviar Pedido a Cocina y Domiciliario"):
+        if st.button("🚀 Enviar Pedido a Cocina y Domiciliario")
             if not cliente_nom or not cliente_dir or not cantidades_orden:
                 st.error("Por favor completa el nombre, dirección y selecciona al menos 1 plato.")
             else:
@@ -72,6 +72,7 @@ def render_despacho():
                 consecutivo_hoy = len(pedidos_hoy) + 1
                 nuevo_id = f"{consecutivo_hoy:02d}"  # Formato: 01, 02, 03...
                 nuevo_pedido = {
+        
                     "ID Orden": nuevo_id,
                     "Fecha/Hora": ahora.strftime("%Y-%m-%d %H:%M"),
                     "Fecha Pactada": ahora.strftime("%Y-%m-%d"),
@@ -87,9 +88,11 @@ def render_despacho():
                     "Flete ($)": costo_flete,
                     "Total Cobrado ($)": total_a_cobrar,
                     "Método de Pago": metodo_pago,
+                    "paga_con": paga_con,
                     "Repartidor": REPARTIDORES[domiciliario_asig],
                     "Estado": "EN_RUTA"
                 }
+                
                 st.session_state.pedidos.append(nuevo_pedido)
                 guardar_pedidos(st.session_state.pedidos)
                 st.success(f"✅ ¡Pedido #{nuevo_id} guardado en BD y asignado a {REPARTIDORES[domiciliario_asig]}!")

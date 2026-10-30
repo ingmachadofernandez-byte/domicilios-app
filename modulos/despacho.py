@@ -66,8 +66,11 @@ def render_despacho():
                 st.error("Por favor completa el nombre, dirección y selecciona al menos 1 plato.")
             else:
                 pedidos = st.session_state.pedidos
-                nuevo_id = (max([p.get("ID Orden", 100) for p in pedidos]) + 1) if pedidos else 101
-                ahora = datetime.now()
+                hoy_str = datetime.now().strftime("%Y-%m-%d")
+                # Contar pedidos registrados hoy
+                pedidos_hoy = [p for p in pedidos if str(p.get("Fecha/Hora", "")).startswith(hoy_str)]
+                consecutivo_hoy = len(pedidos_hoy) + 1
+                nuevo_id = f"{consecutivo_hoy:02d}"  # Formato: 01, 02, 03...
                 nuevo_pedido = {
                     "ID Orden": nuevo_id,
                     "Fecha/Hora": ahora.strftime("%Y-%m-%d %H:%M"),
@@ -128,4 +131,3 @@ def render_despacho():
             if url_whatsapp:
                 st.link_button(f"💬 Confirmar y Notificar WhatsApp a {p.get('Cliente')} (#{p.get('ID Orden')})", url_whatsapp)
             st.write("")
-            

@@ -121,7 +121,11 @@ def render_programados():
                 st.error("Completa cliente, dirección y selecciona al menos 1 plato para agendar.")
             else:
                 pedidos = st.session_state.pedidos
-                nuevo_id = (max([p.get("ID Orden", 100) for p in pedidos]) + 1) if pedidos else 101
+                # Para pedidos agendados, el consecutivo corresponde a la fecha en que se entregará
+                f_pactada_str = str(fecha_pactada)
+                pedidos_fecha_pactada = [p for p in pedidos if str(p.get("Fecha Pactada", "")) == f_pactada_str]
+                consecutivo_dia = len(pedidos_fecha_pactada) + 1
+                nuevo_id = f"{consecutivo_dia:02d}"  # Formato: 01, 02, 03...
                 pedido_agendado = {
                     "ID Orden": nuevo_id,
                     "Fecha/Hora": datetime.now().strftime("%Y-%m-%d %H:%M"),

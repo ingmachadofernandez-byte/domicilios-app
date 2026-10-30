@@ -2,13 +2,72 @@
 import streamlit as st
 import urllib.parse
 from datetime import datetime, date, time
-from config import MENU_PRODUCTOS, REPARTIDORES
+from config import MENU_PRODUCTOS, REPARTIDORES, CELULAR_ENCARGADA_DESPACHOS
 from database import guardar_pedidos
-from modulos.utils import formatear_telefono_co
+from modulos.utils import formatear_telefono_co, reproducir_alerta_sonora
+
+@st.dialog("🔔 ¡NUEVO PEDIDO AGENDADO CON ÉXITO!")
+def mostrar_popup_agenda(pedido):
+    reproducir_alerta_sonora()
+    st.markdown(f"""
+    <div style="background-color: #e8f0fe; padding: 14px; border-radius: 12px; border-left: 5px solid #1E88E5; margin-bottom: 12px;">
+        <h4 style="margin: 0; color: #1565C0;">📋 Reserva #{pedido.get('ID Orden')}</h4>
+        <p style="margin: 6px 0 0 0; color: #111;">
+            📅 <b>Fecha y Hora:</b> {pedido.get('Fecha Pactada')} a las {pedido.get('Hora Pactada')}<br>
+            👤 <b>Cliente:</b> {pedido.get('Cliente')} ({pedido.get('Teléfono')})<br>
+            📍 <b>Dirección:</b> {pedido.get('Dirección')} ({pedido.get('Barrio')})<br>
+            🥩 <b>Menú:</b> {pedido.get('Platos Solicitados')}<br>
+            💰 <b>Total:</b> ${float(pedido.get('Total Cobrado ($)', 0)):,.0f} COP ({pedido.get('Método de Pago')})
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Mensaje formateado para la encargada de despachos
+    msg_despachos = (
+        f"🚨 *¡ALERTA NUEVA PREVENTA AGENDADA!* 🚨\n\n"
+        f"📋 *Reserva #{pedido.get('ID Orden')}*\n"
+        f"📅 *Entrega Pactada:* {pedido.get('Fecha Pactada')} a las {pedido.get('Hora Pactada')}\n"
+        f"👤 *Cliente:* {pedido.get('Cliente')}\n"
+        f"📞 *Teléfono Cliente:* {pedido.get('Teléfono')}\n"
+        f"📍 *Dirección:* {pedido.get('Dirección')} ({pedido.get('Barrio')})\n"
+        f"🍽️ *Menú Solicitado:* {pedido.get('Platos Solicitados')}\n"
+        f"💵 *Total a Cancelar:* ${float(pedido.get('Total Cobrado ($)', 0)):,.0f} COP ({pedido.get('Método de Pago')})\n\n"
+        f"⚠️ *Por favor tener presente para alistamiento en cocina y ruta.*"
+    )
+    
+    tel_encargada = formatear_telefono_co(CELULAR_ENCARGADA_DESPACHOS)
+    url_wa_encargada = f"https://wa.me/{tel_encargada}?text={urllib.parse.quote(msg_despachos)}"
+    
+    st.link_button("📲 Notificar por WhatsApp a Despachos (311 758 5987)", url_wa_encargada)
+    
+    # También enlace para confirmar al cliente
+    tel_cliente = formatear_telefono_co(pedido.get("Teléfono", ""))
+    if tel_cliente:
+        msg_cliente = (
+            f"🥓 *¡Hola {pedido.get('Cliente')}! Confirmamos tu pedido programado en El Súper Chicharronazo.*\n\n"
+            f"📋 *Reserva #{pedido.get('ID Orden')}*\n"
+            f"📅 *Fecha de Entrega:* {pedido.get('Fecha Pactada')} a las {pedido.get('Hora Pactada')}\n"
+            f"🍽️ *Menú Encargado:* {pedido.get('Platos Solicitados')}\n"
+            f"💰 *Subtotal Comida:* ${float(pedido.get('Subtotal Comida ($)', 0)):,.0f} COP\n"
+            f"🛵 *Domicilio:* ${float(pedido.get('Flete ($)', 0)):,.0f} COP\n"
+            f"💵 *Total Acordado:* ${float(pedido.get('Total Cobrado ($)', 0)):,.0f} COP ({pedido.get('Método de Pago')})\n\n"
+            f"📍 *Dirección de Entrega:* {pedido.get('Dirección')} ({pedido.get('Barrio')})\n"
+            f"¡Tu orden ya está registrada en nuestro sistema!"
+        )
+        url_wa_cliente = f"https://wa.me/{tel_cliente}?text={urllib.parse.quote(msg_cliente)}"
+        st.link_button(f"💬 Enviar Confirmación al Cliente ({pedido.get('Cliente')})", url_wa_cliente)
+
+    if st.button("Cerrar Aviso"):
+        st.session_state.ultimo_agendado_popup = None
+        st.rerun()
 
 def render_programados():
     st.title("📅 Pedidos Programados y Preventas")
-    st.caption("Agenda pedidos anticipados con confirmación obligatoria por WhatsApp y respaldo en BD.")
+    st.caption("Agenda pedidos anticipados con alerta sonora, popup de confirmación y aviso automático a despachos.")
+
+    # Disparar popup si se acaba de agendar un pedido
+    if st.session_state.get("ultimo_agendado_popup"):
+        mostrar_popup_agenda(st.session_state.ultimo_agendado_popup)
 
     with st.expander("➕ Agendar Nuevo Pedido para Otra Fecha", expanded=True):
         col_f1, col_f2 = st.columns(2)
@@ -57,7 +116,7 @@ def render_programados():
                 base_m = float(total_prog) if total_prog > 0 else 0.0
                 paga_con_prog = st.number_input("Paga con billete de:", min_value=base_m, step=5000.0, value=base_m, key="p_billete")
 
-        if st.button("📌 Guardar Pedido en Agenda y Base de Datos"):
+        if st.button("📌 Guardar Pedido en Agenda y Disparar Alerta"):
             if not cli_prog_nom or not cli_prog_dir or not cantidades_prog:
                 st.error("Completa cliente, dirección y selecciona al menos 1 plato para agendar.")
             else:
@@ -84,7 +143,9 @@ def render_programados():
                 }
                 st.session_state.pedidos.append(pedido_agendado)
                 guardar_pedidos(st.session_state.pedidos)
-                st.success(f"🎉 ¡Pedido #{nuevo_id} guardado en BD con respaldo horario!")
+                
+                # Activar popup emergente y sonido
+                st.session_state.ultimo_agendado_popup = pedido_agendado
                 st.rerun()
 
     st.divider()
@@ -104,19 +165,18 @@ def render_programados():
             if filtro_agenda == "A partir de Mañana" and f_pactada <= hoy_str:
                 continue
             
-            msg_preventa = (
-                f"🥓 *¡Hola {p.get('Cliente')}! Confirmamos tu pedido programado en El Súper Chicharronazo.*\n\n"
+            # Notificación para encargada de despachos
+            msg_alerta_despachos = (
+                f"🚨 *RECORDATORIO DE PREVENTA PENDIENTE* 🚨\n\n"
                 f"📋 *Reserva #{p.get('ID Orden')}*\n"
-                f"📅 *Fecha de Entrega:* {p.get('Fecha Pactada')} a las {p.get('Hora Pactada')}\n"
-                f"🍽️ *Menú Encargado:* {p.get('Platos Solicitados')}\n"
-                f"💰 *Subtotal Comida:* ${float(p.get('Subtotal Comida ($)', 0)):,.0f} COP\n"
-                f"🛵 *Domicilio:* ${float(p.get('Flete ($)', 0)):,.0f} COP\n"
-                f"💵 *Total Acordado:* ${float(p.get('Total Cobrado ($)', 0)):,.0f} COP ({p.get('Método de Pago')})\n\n"
-                f"📍 *Dirección de Entrega:* {p.get('Dirección')} ({p.get('Barrio')})\n"
-                f"¡Tu orden ya está registrada y agendada con éxito!"
+                f"📅 *Entrega:* {p.get('Fecha Pactada')} a las {p.get('Hora Pactada')}\n"
+                f"👤 *Cliente:* {p.get('Cliente')} ({p.get('Teléfono')})\n"
+                f"📍 *Dirección:* {p.get('Dirección')} ({p.get('Barrio')})\n"
+                f"🍽️ *Menú:* {p.get('Platos Solicitados')}\n"
+                f"💵 *Total:* ${float(p.get('Total Cobrado ($)', 0)):,.0f} COP ({p.get('Método de Pago')})"
             )
-            tel_formateado = formatear_telefono_co(p.get("Teléfono", ""))
-            url_wa_preventa = f"https://wa.me/{tel_formateado}?text={urllib.parse.quote(msg_preventa)}" if tel_formateado else None
+            tel_enc = formatear_telefono_co(CELULAR_ENCARGADA_DESPACHOS)
+            url_wa_enc = f"https://wa.me/{tel_enc}?text={urllib.parse.quote(msg_alerta_despachos)}"
 
             st.markdown(f"""
             <div class="card-programado">
@@ -130,9 +190,21 @@ def render_programados():
             </div>
             """, unsafe_allow_html=True)
 
-            if url_wa_preventa:
-                st.link_button(f"💬 Confirmar Preventa por WhatsApp a {p.get('Cliente')} (#{p.get('ID Orden')})", url_wa_preventa)
+            col_btn1, col_btn2 = st.columns(2)
+            with col_btn1:
+                st.link_button(f"🚨 Avisar a Despachos (311 758 5987)", url_wa_enc)
+            with col_btn2:
+                tel_c = formatear_telefono_co(p.get("Teléfono", ""))
+                if tel_c:
+                    msg_cli = (
+                        f"🥓 *¡Hola {p.get('Cliente')}! Recordamos tu reserva en El Súper Chicharronazo.*\n"
+                        f"📋 Orden #{p.get('ID Orden')} para el {p.get('Fecha Pactada')} ({p.get('Hora Pactada')}).\n"
+                        f"En breve pasaremos tu orden a cocina y ruta."
+                    )
+                    url_c = f"https://wa.me/{tel_c}?text={urllib.parse.quote(msg_cli)}"
+                    st.link_button(f"💬 Notificar al Cliente", url_c)
             
+            # Despachar a ruta cuando llegue la hora
             col_desp1, col_desp2 = st.columns([1.5, 1])
             with col_desp1:
                 rep_elegido = st.selectbox(
@@ -150,4 +222,3 @@ def render_programados():
                     st.success(f"¡Orden #{p.get('ID Orden')} despachada a {REPARTIDORES[rep_elegido]}!")
                     st.rerun()
             st.divider()
-            

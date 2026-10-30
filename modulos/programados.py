@@ -2,7 +2,7 @@
 import streamlit as st
 import urllib.parse
 from datetime import datetime, date, time
-from config import MENU_PRODUCTOS, REPARTIDORES, CELULAR_ENCARGADA_DESPACHOS
+from config import MENU_PRODUCTOS, REPARTIDORES, ENCARGADAS_DESPACHO
 from database import guardar_pedidos
 from modulos.utils import formatear_telefono_co, reproducir_alerta_sonora
 
@@ -22,7 +22,7 @@ def mostrar_popup_agenda(pedido):
     </div>
     """, unsafe_allow_html=True)
     
-    # Mensaje formateado para la encargada de despachos
+    # Mensaje formateado para las encargadas de despacho
     msg_despachos = (
         f"🚨 *¡ALERTA NUEVA PREVENTA AGENDADA!* 🚨\n\n"
         f"📋 *Reserva #{pedido.get('ID Orden')}*\n"
@@ -35,12 +35,20 @@ def mostrar_popup_agenda(pedido):
         f"⚠️ *Por favor tener presente para alistamiento en cocina y ruta.*"
     )
     
-    tel_encargada = formatear_telefono_co(CELULAR_ENCARGADA_DESPACHOS)
-    url_wa_encargada = f"https://wa.me/{tel_encargada}?text={urllib.parse.quote(msg_despachos)}"
+    st.markdown("##### 📲 Notificar a Encargadas de Despacho:")
+    col_enc1, col_enc2 = st.columns(2)
     
-    st.link_button("📲 Notificar por WhatsApp a Despachos (311 758 5987)", url_wa_encargada)
+    tel_1 = formatear_telefono_co(ENCARGADAS_DESPACHO["Encargada 1"])
+    url_wa_1 = f"https://wa.me/{tel_1}?text={urllib.parse.quote(msg_despachos)}"
+    with col_enc1:
+        st.link_button("📲 Avisar al 311 758 5487", url_wa_1)
+
+    tel_2 = formatear_telefono_co(ENCARGADAS_DESPACHO["Encargada 2"])
+    url_wa_2 = f"https://wa.me/{tel_2}?text={urllib.parse.quote(msg_despachos)}"
+    with col_enc2:
+        st.link_button("📲 Avisar al 300 379 0386", url_wa_2)
     
-    # También enlace para confirmar al cliente
+    # Enlace para confirmar al cliente
     tel_cliente = formatear_telefono_co(pedido.get("Teléfono", ""))
     if tel_cliente:
         msg_cliente = (
@@ -55,8 +63,10 @@ def mostrar_popup_agenda(pedido):
             f"¡Tu orden ya está registrada en nuestro sistema!"
         )
         url_wa_cliente = f"https://wa.me/{tel_cliente}?text={urllib.parse.quote(msg_cliente)}"
-        st.link_button(f"💬 Enviar Confirmación al Cliente ({pedido.get('Cliente')})", url_wa_cliente)
+        st.write("")
+        st.link_button(f"💬 Confirmar al Cliente ({pedido.get('Cliente')})", url_wa_cliente)
 
+    st.write("")
     if st.button("Cerrar Aviso"):
         st.session_state.ultimo_agendado_popup = None
         st.rerun()
@@ -66,29 +76,16 @@ def render_programados():
     st.caption("Agenda pedidos anticipados con alerta sonora, popup de confirmación y aviso automático a despachos.")
 
     # Disparar popup si se acaba de agendar un pedido
-    f"🚨 *¡ALERTA NUEVA PREVENTA AGENDADA!* 🚨\n\n"
-    f"📋 *Reserva #{pedido.get('ID Orden')}*\n"
-    f"📅 *Entrega Pactada:* {pedido.get('Fecha Pactada')} a las {pedido.get('Hora Pactada')}\n"
-    f"👤 *Cliente:* {pedido.get('Cliente')}\n"
-    f"📞 *Teléfono Cliente:* {pedido.get('Teléfono')}\n"
-    f"📍 *Dirección:* {pedido.get('Dirección')} ({pedido.get('Barrio')})\n"
-    f"🍽️ *Menú Solicitado:* {pedido.get('Platos Solicitados')}\n"
-    f"💵 *Total a Cancelar:* ${float(pedido.get('Total Cobrado ($)', 0)):,.0f} COP ({pedido.get('Método de Pago')})\n\n"
-    f"⚠️ *Por favor tener presente para alistamiento en cocina y ruta.*"
-)
+    if st.session_state.get("ultimo_agendado_popup"):
+        mostrar_popup_agenda(st.session_state.ultimo_agendado_popup)
 
-st.markdown("##### 📲 Notificar a Encargadas de Despacho:")
-col_enc1, col_enc2 = st.columns(2)
-
-tel_1 = formatear_telefono_co(ENCARGADAS_DESPACHO["Encargada 1"])
-url_wa_1 = f"https://wa.me/{tel_1}?text={urllib.parse.quote(msg_despachos)}"
-with col_enc1:
-    st.link_button("📲 Avisar al 311 758 5487", url_wa_1)
-
-tel_2 = formatear_telefono_co(ENCARGADAS_DESPACHO["Encargada 2"])
-url_wa_2 = f"https://wa.me/{tel_2}?text={urllib.parse.quote(msg_despachos)}"
-with col_enc2:
-    st.link_button("📲 Avisar al 300 379 0386", url_wa_2)
+    with st.expander("➕ Agendar Nuevo Pedido para Otra Fecha", expanded=True):
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            fecha_pactada = st.date_input("Fecha de entrega pactada:", min_value=date.today())
+            hora_pactada = st.time_input("Hora aproximada de entrega:", value=time(13, 0))
+            cli_prog_nom = st.text_input("Nombre del Cliente:", key="p_nom", placeholder="Ej: Andrés Restrepo")
+            cli_prog_tel = st.text_input("Teléfono WhatsApp (10 dígitos):", key="p_tel", placeholder="Ej: 3158889900")
         
         with col_f2:
             cli_prog_dir = st.text_input("Dirección de Entrega:", key="p_dir", placeholder="Ej: Calle 14 # 85-20")
@@ -134,15 +131,15 @@ with col_enc2:
                 st.error("Completa cliente, dirección y selecciona al menos 1 plato para agendar.")
             else:
                 pedidos = st.session_state.pedidos
-                # Para pedidos agendados, el consecutivo corresponde a la fecha en que se entregará
                 f_pactada_str = str(fecha_pactada)
                 pedidos_fecha_pactada = [p for p in pedidos if str(p.get("Fecha Pactada", "")) == f_pactada_str]
                 consecutivo_dia = len(pedidos_fecha_pactada) + 1
-                nuevo_id = f"{consecutivo_dia:02d}"  # Formato: 01, 02, 03...
+                nuevo_id = f"{consecutivo_dia:02d}"
+
                 pedido_agendado = {
                     "ID Orden": nuevo_id,
                     "Fecha/Hora": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "Fecha Pactada": str(fecha_pactada),
+                    "Fecha Pactada": f_pactada_str,
                     "Hora Pactada": hora_pactada.strftime("%I:%M %p"),
                     "Tipo Pedido": "PROGRAMADO",
                     "Cliente": cli_prog_nom,
@@ -182,7 +179,7 @@ with col_enc2:
             if filtro_agenda == "A partir de Mañana" and f_pactada <= hoy_str:
                 continue
             
-            # Notificación para encargada de despachos
+            # Mensaje individual para avisar a despachos
             msg_alerta_despachos = (
                 f"🚨 *RECORDATORIO DE PREVENTA PENDIENTE* 🚨\n\n"
                 f"📋 *Reserva #{p.get('ID Orden')}*\n"
@@ -192,8 +189,10 @@ with col_enc2:
                 f"🍽️ *Menú:* {p.get('Platos Solicitados')}\n"
                 f"💵 *Total:* ${float(p.get('Total Cobrado ($)', 0)):,.0f} COP ({p.get('Método de Pago')})"
             )
-            tel_enc = formatear_telefono_co(CELULAR_ENCARGADA_DESPACHOS)
-            url_wa_enc = f"https://wa.me/{tel_enc}?text={urllib.parse.quote(msg_alerta_despachos)}"
+            tel_1 = formatear_telefono_co(ENCARGADAS_DESPACHO["Encargada 1"])
+            tel_2 = formatear_telefono_co(ENCARGADAS_DESPACHO["Encargada 2"])
+            url_wa_1 = f"https://wa.me/{tel_1}?text={urllib.parse.quote(msg_alerta_despachos)}"
+            url_wa_2 = f"https://wa.me/{tel_2}?text={urllib.parse.quote(msg_alerta_despachos)}"
 
             st.markdown(f"""
             <div class="card-programado">
@@ -207,10 +206,12 @@ with col_enc2:
             </div>
             """, unsafe_allow_html=True)
 
-            col_btn1, col_btn2 = st.columns(2)
-            with col_btn1:
-                st.link_button(f"🚨 Avisar a Despachos (311 758 5987)", url_wa_enc)
-            with col_btn2:
+            c_wa1, c_wa2, c_wacli = st.columns(3)
+            with c_wa1:
+                st.link_button("📲 Avisar al 311 758 5487", url_wa_1)
+            with c_wa2:
+                st.link_button("📲 Avisar al 300 379 0386", url_wa_2)
+            with c_wacli:
                 tel_c = formatear_telefono_co(p.get("Teléfono", ""))
                 if tel_c:
                     msg_cli = (
@@ -219,9 +220,9 @@ with col_enc2:
                         f"En breve pasaremos tu orden a cocina y ruta."
                     )
                     url_c = f"https://wa.me/{tel_c}?text={urllib.parse.quote(msg_cli)}"
-                    st.link_button(f"💬 Notificar al Cliente", url_c)
+                    st.link_button("💬 Recordar al Cliente", url_c)
             
-            # Despachar a ruta cuando llegue la hora
+            # Asignar Repartidor y Despachar a ruta
             col_desp1, col_desp2 = st.columns([1.5, 1])
             with col_desp1:
                 rep_elegido = st.selectbox(

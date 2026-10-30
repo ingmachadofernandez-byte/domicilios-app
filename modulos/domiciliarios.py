@@ -1,3 +1,4 @@
+
 # modulos/domiciliarios.py
 import streamlit as st
 import urllib.parse
@@ -25,7 +26,7 @@ def render_domiciliario(usuario_actual):
     
     st.session_state[clave_conteo] = conteo_actual
 
-    ganancia_fletes = sum(float(p.get("Flete ($)", 0)) for p in mis_completados)
+    ganancia_fletes = sum(float(p.get("Flete ($)", 0) or p.get("flete", 0) or 0) for p in mis_completados)
     
     c_met1, c_met2 = st.columns(2)
     c_met1.metric("💵 Mis Fletes Ganados Hoy", f"${ganancia_fletes:,.0f} COP")
@@ -41,43 +42,70 @@ def render_domiciliario(usuario_actual):
         st.success("🎉 ¡Excelente trabajo! No tienes entregas en ruta en este momento.")
     else:
         for p in mis_pedidos:
-            dir_url = urllib.parse.quote(f"{p.get('Dirección')}, {p.get('Barrio')}, Cali")
-            total_cobrado = float(p.get("Total Cobrado ($)", 0))
-            flete = float(p.get("Flete ($)", 0))
-            metodo_pago = str(p.get("Método de Pago", "EFECTIVO")).upper().strip()
+            id_orden = p.get("ID Orden") or p.get("id") or "S/N"
+            cliente = p.get("Cliente") or p.get("cliente") or "Cliente"
+            direccion = p.get("Dirección") or p.get("direccion") or ""
+            barrio = p.get("Barrio") or p.get("barrio") or ""
+            platos = p.get("Platos Solicitados") or p.get("detalle") or ""
+            telefono = p.get("Teléfono") or p.get("telefono") or ""
             
-            paga_con = float(p.get("paga_con", 0) or p.get("Paga Con ($)", 0) or total_cobrado)
+            try:
+                total_cobrado = float(p.get("Total Cobrado ($)") or p.get("total_cobrado") or 0)
+            except Exception:
+                total_cobrado = 0.0
+
+            try:
+                flete = float(p.get("Flete ($)") or p.get("flete") or 0)
+            except Exception:
+                flete = 0.0
+
+            # Detección flexible del método de pago
+            metodo_pago_raw = str(p.get("Método de Pago") or p.get("metodo_pago") or "EFECTIVO").upper().strip()
+
+            # Obtención del valor con el que paga el cliente
+            try:
+                paga_con = float(p.get("paga_con") or p.get("Paga Con ($)") or total_cobrado)
+            except Exception:
+                paga_con = total_cobrado
+
             vueltos = (paga_con - total_cobrado) if paga_con > total_cobrado else 0.0
+
+            dir_url = urllib.parse.quote(f"{direccion}, {barrio}, Cali")
             
             st.markdown(f"""
             <div class="rappi-card">
-                <span class="badge-orden">ENTREGA #{p.get('ID Orden')}</span>
+                <span class="badge-orden">ENTREGA #{id_orden}</span>
                 <span style="float: right; font-weight: bold; color: #111; font-size: 1.15rem;">${total_cobrado:,.0f} COP</span>
-                <h3 style="margin: 6px 0;">{p.get('Cliente')}</h3>
-                📍 <b>Dirección:</b> {p.get('Dirección')} ({p.get('Barrio')})<br>
-                🥡 <b>Llevar:</b> {p.get('Platos Solicitados')}<br>
+                <h3 style="margin: 6px 0;">{cliente}</h3>
+                📍 <b>Dirección:</b> {direccion} ({barrio})<br>
+                🥡 <b>Llevar:</b> {platos}<br>
                 🛵 <b>Tu Pago por Carrera:</b> <span style="color: #2b9348; font-weight: bold;">${flete:,.0f} COP</span>
             </div>
             """, unsafe_allow_html=True)
             
-            # Bloque visual de Método de Pago según el tipo
-            if "EFECTIVO" in metodo_pago:
-                st.warning(f"💵 **COBRAR EN EFECTIVO:** ${total_cobrado:,.0f} COP\n\n"
-                           f"👉 El cliente paga con: **${paga_con:,.0f} COP** | **Dar de cambio:** **${vueltos:,.0f} COP**")
-            elif "DATAFONO" in metodo_pago or "DATÁFONO" in metodo_pago:
-                st.info(f"💳 **COBRAR CON DATÁFONO:** ${total_cobrado:,.0f} COP\n\n"
-                        f"👉 Llevar el datáfono para cobro con tarjeta física/digital.")
+            # Alerta visual obligatoria de Cobro
+            if "NEQUI" in metodo_pago_raw:
+                st.success(f"✅ **PAGADO POR NEQUI:** ${total_cobrado:,.0f} COP\n\n*(No debes cobrar dinero al cliente)*")
+            elif "DATAFONO" in metodo_pago_raw or "DATÁFONO" in metodo_pago_raw:
+                st.info(f"💳 **COBRAR CON DATÁFONO:** ${total_cobrado:,.0f} COP\n\n*(Cobro con tarjeta física o digital)*")
             else:
-                st.success(f"✅ **PAGADO POR NEQUI:** ${total_cobrado:,.0f} COP (No cobrar dinero al cliente)")
+                # Por defecto EFECTIVO
+                if paga_con > total_cobrado:
+                    st.warning(f"💵 **COBRAR EN EFECTIVO:** ${total_cobrado:,.0f} COP\n\n"
+                               f"👉 El cliente paga con: **${paga_con:,.0f} COP** | **Dar de cambio:** **${vueltos:,.0f} COP**")
+                else:
+                    st.warning(f"💵 **COBRAR EN EFECTIVO:** ${total_cobrado:,.0f} COP\n\n"
+                               f"👉 Pago exacto (sin cambio requerido).")
                 
             c1, c2, c3 = st.columns(3)
             with c1: st.link_button("🚗 Waze", f"https://waze.com/ul?q={dir_url}&navigate=yes")
             with c2: st.link_button("🗺️ Maps", f"https://www.google.com/maps/search/?api=1&query={dir_url}")
-            with c3: st.link_button("📞 Llamar", f"tel:{p.get('Teléfono')}")
+            with c3: st.link_button("📞 Llamar", f"tel:{telefono}")
             
             st.write("")
-            if st.button(f"🏁 Marcar Entregado #{p.get('ID Orden')}", key=f"btn_ent_{p.get('ID Orden')}"):
+            if st.button(f"🏁 Marcar Entregado #{id_orden}", key=f"btn_ent_{id_orden}"):
                 p["Estado"] = "ENTREGADO"
                 guardar_pedidos(st.session_state.pedidos)
                 st.rerun()
             st.divider()
+            

@@ -18,11 +18,18 @@ st.set_page_config(
 inyectar_estilos()
 logo_path = obtener_ruta_logo()
 
+# 1. Recuperar sesión persistente desde la URL del navegador
+query_user = st.query_params.get("user", None)
+if query_user and query_user in USUARIOS_AUTORIZADOS:
+    st.session_state.autenticado = True
+    st.session_state.usuario_activo = USUARIOS_AUTORIZADOS[query_user]
+
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
     st.session_state.usuario_activo = None
 
-if "pedidos" not in st.session_state:
+# Cargar siempre pedidos frescos de Google Sheets
+if "pedidos" not in st.session_state or not st.session_state.pedidos:
     st.session_state.pedidos = cargar_pedidos()
 
 # PANTALLA LOGIN
@@ -33,7 +40,7 @@ if not st.session_state.autenticado:
         if logo_path:
             st.image(logo_path, width=180)
         st.title("🥓 SÚPER CHICHARRONAZO")
-        st.caption("Acceso Seguro por Rol Operativo")
+        st.caption("Acceso Seguro y Permanente por Rol")
         
         with st.form("form_login"):
             usuario = st.text_input("Usuario:").strip().lower()
@@ -42,6 +49,8 @@ if not st.session_state.autenticado:
                 if usuario in USUARIOS_AUTORIZADOS and USUARIOS_AUTORIZADOS[usuario]["clave"] == clave:
                     st.session_state.autenticado = True
                     st.session_state.usuario_activo = USUARIOS_AUTORIZADOS[usuario]
+                    # Guardar sesión en la URL para que no se cierre al salir
+                    st.query_params["user"] = usuario
                     st.rerun()
                 else:
                     st.error("Credenciales incorrectas.")
@@ -59,9 +68,11 @@ st.sidebar.caption(f"Rol: {rol_txt}")
 if st.sidebar.button("Cerrar Sesión"):
     st.session_state.autenticado = False
     st.session_state.usuario_activo = None
+    if "user" in st.query_params:
+        del st.query_params["user"]
     st.rerun()
 
-# ENRUTAMIENTO POR MÓDULOS
+# ENRUTAMIENTO POR MÓDULOS (INTACTOS)
 if usuario_actual["rol"] == "DOMICILIARIO":
     render_domiciliario(usuario_actual)
 elif usuario_actual["rol"] == "ADMIN":

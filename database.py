@@ -10,7 +10,6 @@ CSV_FILE = "pedidos.csv"
 BACKUP_DIR = "backups"
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
-# Encabezados exactos de tu Google Sheet
 COLUMNAS_BD = [
     "ID Orden", "Fecha/Hora", "Fecha Pactada", "Hora Pactada", "Tipo Pedido", 
     "Cliente", "Teléfono", "Dirección", "Barrio", "Zona", "Platos Solicitados", 
@@ -24,43 +23,36 @@ def respaldar_hora_a_hora():
         shutil.copyfile(CSV_FILE, backup_path)
 
 def cargar_pedidos():
-    # 1. Intentar cargar desde Google Sheets
+    """Lee siempre desde Google Sheets como fuente principal permanente."""
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
-        df_cloud = conn.read(ttl="0s")
+        df_cloud = conn.read(ttl=0)
         if df_cloud is not None and not df_cloud.empty:
             for c in COLUMNAS_BD:
                 if c not in df_cloud.columns:
                     df_cloud[c] = ""
-            registros = df_cloud[COLUMNAS_BD].to_dict(orient="records")
-            df_cloud[COLUMNAS_BD].to_csv(CSV_FILE, index=False)
+            df_limpio = df_cloud[COLUMNAS_BD].dropna(how="all")
+            registros = df_limpio.to_dict(orient="records")
+            df_limpio.to_csv(CSV_FILE, index=False)
             return registros
     except Exception:
         pass
 
-    # 2. Respaldo local
+    # Respaldo local si no hay internet momentáneamente
     if os.path.exists(CSV_FILE):
         try:
             df = pd.read_csv(CSV_FILE)
             for c in COLUMNAS_BD:
                 if c not in df.columns:
                     df[c] = ""
-            return df.to_dict(orient="records")
+            return df[COLUMNAS_BD].to_dict(orient="records")
         except Exception:
             pass
 
-    # 3. Intentar recuperar desde último backup
-    backups = sorted([f for f in os.listdir(BACKUP_DIR) if f.endswith(".csv")])
-    if backups:
-        try:
-            ultimo = os.path.join(BACKUP_DIR, backups[-1])
-            df = pd.read_csv(ultimo)
-            return df.to_dict(orient="records")
-        except Exception:
-            return []
     return []
 
 def guardar_pedidos(lista_pedidos):
+    """Guarda localmente y sincroniza de inmediato en Google Sheets permanente."""
     if lista_pedidos:
         df = pd.DataFrame(lista_pedidos)
         for col in COLUMNAS_BD:
@@ -74,8 +66,7 @@ def guardar_pedidos(lista_pedidos):
             conn = st.connection("gsheets", type=GSheetsConnection)
             conn.update(data=df)
         except Exception as e:
-            st.warning(f"Guardado localmente. Sincronización en la nube pendiente: {e}")
+            st.error(f"⚠️ Error al escribir en Google Sheets: Asegúrate de que la hoja tenga permisos de Editor públicos.")
     else:
         df_vacio = pd.DataFrame(columns=COLUMNAS_BD)
         df_vacio.to_csv(CSV_FILE, index=False)
-        

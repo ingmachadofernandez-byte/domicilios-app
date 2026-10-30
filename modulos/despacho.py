@@ -52,30 +52,36 @@ def render_despacho():
         
         col_p1, col_p2 = st.columns(2)
         with col_p1:
-            metodo_pago = st.selectbox("Método de Pago:", ["NEQUI", "EFECTIVO", "DATAFONO"])
+            metodo_pago = st.selectbox("Método de Pago:", ["EFECTIVO", "NEQUI", "DATÁFONO"])
         with col_p2:
-            paga_con = 0.0
+            paga_con = float(total_a_cobrar)
             if metodo_pago == "EFECTIVO":
                 base_min = float(total_a_cobrar) if total_a_cobrar > 0 else 0.0
                 paga_con = st.number_input("¿Con cuánto paga el cliente?", min_value=base_min, step=5000.0, value=base_min)
                 vueltos_calc = paga_con - total_a_cobrar
                 st.caption(f"👉 **Vueltos para el repartidor:** ${vueltos_calc:,.0f} COP")
+            elif metodo_pago == "DATÁFONO":
+                st.info("💳 El domiciliario debe llevar el datáfono para cobro con tarjeta.")
+            else:
+                st.success("📲 Pago directo por Nequi (el domiciliario no cobra dinero).")
 
-        if st.button("🚀 Enviar Pedido a Cocina y Domiciliario")
+        if st.button("🚀 Enviar Pedido a Cocina y Domiciliario"):
             if not cliente_nom or not cliente_dir or not cantidades_orden:
                 st.error("Por favor completa el nombre, dirección y selecciona al menos 1 plato.")
             else:
                 pedidos = st.session_state.pedidos
-                hoy_str = datetime.now().strftime("%Y-%m-%d")
-                # Contar pedidos registrados hoy
+                ahora = datetime.now()
+                hoy_str = ahora.strftime("%Y-%m-%d")
+                
+                # Consecutivo que inicia cada día en 01
                 pedidos_hoy = [p for p in pedidos if str(p.get("Fecha/Hora", "")).startswith(hoy_str)]
                 consecutivo_hoy = len(pedidos_hoy) + 1
-                nuevo_id = f"{consecutivo_hoy:02d}"  # Formato: 01, 02, 03...
+                nuevo_id = f"{consecutivo_hoy:02d}"
+
                 nuevo_pedido = {
-        
                     "ID Orden": nuevo_id,
                     "Fecha/Hora": ahora.strftime("%Y-%m-%d %H:%M"),
-                    "Fecha Pactada": ahora.strftime("%Y-%m-%d"),
+                    "Fecha Pactada": hoy_str,
                     "Hora Pactada": "Inmediata",
                     "Tipo Pedido": "INMEDIATO",
                     "Cliente": cliente_nom,
@@ -92,7 +98,6 @@ def render_despacho():
                     "Repartidor": REPARTIDORES[domiciliario_asig],
                     "Estado": "EN_RUTA"
                 }
-                
                 st.session_state.pedidos.append(nuevo_pedido)
                 guardar_pedidos(st.session_state.pedidos)
                 st.success(f"✅ ¡Pedido #{nuevo_id} guardado en BD y asignado a {REPARTIDORES[domiciliario_asig]}!")

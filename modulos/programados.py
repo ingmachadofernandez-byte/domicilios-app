@@ -66,16 +66,29 @@ def render_programados():
     st.caption("Agenda pedidos anticipados con alerta sonora, popup de confirmación y aviso automático a despachos.")
 
     # Disparar popup si se acaba de agendar un pedido
-    if st.session_state.get("ultimo_agendado_popup"):
-        mostrar_popup_agenda(st.session_state.ultimo_agendado_popup)
+    f"🚨 *¡ALERTA NUEVA PREVENTA AGENDADA!* 🚨\n\n"
+    f"📋 *Reserva #{pedido.get('ID Orden')}*\n"
+    f"📅 *Entrega Pactada:* {pedido.get('Fecha Pactada')} a las {pedido.get('Hora Pactada')}\n"
+    f"👤 *Cliente:* {pedido.get('Cliente')}\n"
+    f"📞 *Teléfono Cliente:* {pedido.get('Teléfono')}\n"
+    f"📍 *Dirección:* {pedido.get('Dirección')} ({pedido.get('Barrio')})\n"
+    f"🍽️ *Menú Solicitado:* {pedido.get('Platos Solicitados')}\n"
+    f"💵 *Total a Cancelar:* ${float(pedido.get('Total Cobrado ($)', 0)):,.0f} COP ({pedido.get('Método de Pago')})\n\n"
+    f"⚠️ *Por favor tener presente para alistamiento en cocina y ruta.*"
+)
 
-    with st.expander("➕ Agendar Nuevo Pedido para Otra Fecha", expanded=True):
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            fecha_pactada = st.date_input("Fecha de entrega pactada:", min_value=date.today())
-            hora_pactada = st.time_input("Hora aproximada de entrega:", value=time(13, 0))
-            cli_prog_nom = st.text_input("Nombre del Cliente:", key="p_nom", placeholder="Ej: Andrés Restrepo")
-            cli_prog_tel = st.text_input("Teléfono WhatsApp (10 dígitos):", key="p_tel", placeholder="Ej: 3158889900")
+st.markdown("##### 📲 Notificar a Encargadas de Despacho:")
+col_enc1, col_enc2 = st.columns(2)
+
+tel_1 = formatear_telefono_co(ENCARGADAS_DESPACHO["Encargada 1"])
+url_wa_1 = f"https://wa.me/{tel_1}?text={urllib.parse.quote(msg_despachos)}"
+with col_enc1:
+    st.link_button("📲 Avisar al 311 758 5487", url_wa_1)
+
+tel_2 = formatear_telefono_co(ENCARGADAS_DESPACHO["Encargada 2"])
+url_wa_2 = f"https://wa.me/{tel_2}?text={urllib.parse.quote(msg_despachos)}"
+with col_enc2:
+    st.link_button("📲 Avisar al 300 379 0386", url_wa_2)
         
         with col_f2:
             cli_prog_dir = st.text_input("Dirección de Entrega:", key="p_dir", placeholder="Ej: Calle 14 # 85-20")

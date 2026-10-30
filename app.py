@@ -5,7 +5,6 @@ import os
 import re
 from datetime import datetime, date, time
 
-# 1. Configuración de pantalla Mobile First
 st.set_page_config(
     page_title="Súper Chicharronazo - Domicilios",
     page_icon="🥓",
@@ -13,7 +12,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Archivo de persistencia de datos (permanente)
 CSV_FILE = "pedidos.csv"
 
 def cargar_pedidos():
@@ -36,7 +34,6 @@ def guardar_pedidos(lista_pedidos):
         df = pd.DataFrame(lista_pedidos)
         df.to_csv(CSV_FILE, index=False)
     else:
-        # Crea archivo vacío con encabezados
         columnas = ["id", "fecha", "fecha_entrega_pactada", "hora_entrega_pactada", "tipo_pedido", 
                     "cliente", "telefono", "direccion", "barrio", "zona", "flete", "detalle", 
                     "metodo_pago", "subtotal_comida", "total_cobrado", "paga_con", "estado", "repartidor_id"]
@@ -87,7 +84,6 @@ def reproducir_alerta_sonora():
         </script>
     """, height=0)
 
-# 2. Estilos visuales Rappi-Style
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
@@ -179,7 +175,6 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(32, 0, 59, 0.2);
     }
 
-    /* Pestañas de módulos visibles arriba */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
         background-color: #ffffff;
@@ -206,7 +201,6 @@ for nombre in ["logo.jpeg", "LOGO.jpeg", "logo.png", "LOGO.png"]:
 NUMERO_NEQUI_OFICIAL = "312 248 2577"
 LINK_GOOGLE_SHEETS = "https://docs.google.com/spreadsheets/d/1CIM4KVvcYqZz1li65hGzfxhvKGIjEzb9OVZwv5MPAQ4/edit"
 
-# Catálogo Oficial
 MENU_PRODUCTOS = {
     "Personal": 20000,
     "Mixta": 30000,
@@ -216,15 +210,6 @@ MENU_PRODUCTOS = {
     "MegaFamiliar": 80000
 }
 
-# Tarifas por Zona
-ZONAS_TARIFAS = {
-    "Zona Sur Cercana (Tequendama / San Fernando / Tejares)": 6000,
-    "Zona Centro (San Antonio / Granada / Versalles)": 8000,
-    "Zona Oriente y Norte Medio (Guabal / Limonar / Flora)": 10000,
-    "Zona Norte Lejana y Pance (Chipichape / Menga / Pance / Cd. Jardín)": 12000
-}
-
-# Domiciliarios
 REPARTIDORES = {
     1: "Xavier (Moto 1)",
     2: "Carlos (Moto 2)",
@@ -247,9 +232,6 @@ if "autenticado" not in st.session_state:
 if "pedidos" not in st.session_state:
     st.session_state.pedidos = cargar_pedidos()
 
-# =========================================================
-# LOGIN
-# =========================================================
 if not st.session_state.autenticado:
     col_izq, col_form, col_der = st.columns([1, 1.2, 1])
     with col_form:
@@ -271,12 +253,8 @@ if not st.session_state.autenticado:
                     st.error("Credenciales incorrectas.")
     st.stop()
 
-# =========================================================
-# SESIÓN ACTIVA
-# =========================================================
 usuario_actual = st.session_state.usuario_activo
 
-# Barra lateral
 if LOGO_PATH:
     st.sidebar.image(LOGO_PATH, width=110)
 st.sidebar.markdown(f"👤 **{usuario_actual['nombre']}**")
@@ -288,9 +266,7 @@ if st.sidebar.button("Cerrar Sesión"):
     st.session_state.usuario_activo = None
     st.rerun()
 
-# =========================================================
-# MÓDULO EXCLUSIVO DOMICILIARIOS
-# =========================================================
+# MÓDULO DOMICILIARIOS
 if usuario_actual["rol"] == "DOMICILIARIO":
     rep_id = usuario_actual["rep_id"]
     rep_nombre = REPARTIDORES[rep_id]
@@ -362,20 +338,15 @@ if usuario_actual["rol"] == "DOMICILIARIO":
                 st.rerun()
             st.divider()
 
-# =========================================================
-# MÓDULO EXCLUSIVO ADMINISTRADOR (CRISTINA)
-# =========================================================
+# MÓDULO ADMINISTRADOR (CRISTINA)
 elif usuario_actual["rol"] == "ADMIN":
-    # PESTAÑAS VISIBLES EN PANTALLA PRINCIPAL (Nunca se esconden)
     tab_despacho, tab_programados, tab_finanzas = st.tabs([
         "🖥️ Despacho Inmediato", 
         "📅 Pedidos Programados / Preventas", 
         "📊 Tablero Financiero y Descarga Excel"
     ])
     
-    # -----------------------------------------------------
-    # TAB 1: DESPACHO INMEDIATO
-    # -----------------------------------------------------
+    # TAB 1: DESPACHO
     with tab_despacho:
         st.title("🖥️ Despacho de Pedidos Inmediatos")
         
@@ -394,9 +365,15 @@ elif usuario_actual["rol"] == "ADMIN":
                 cliente_barrio = st.text_input("Barrio:", placeholder="Ej: Limonar")
             
             with col_c2:
-                zona_elegida = st.selectbox("Zona de Entrega:", list(ZONAS_TARIFAS.keys()))
-                costo_flete = ZONAS_TARIFAS[zona_elegida]
-                st.info(f"🛵 Domicilio automático: **${costo_flete:,.0f} COP**")
+                costo_flete = st.number_input(
+                    "Valor del Domicilio ($):",
+                    min_value=0,
+                    max_value=20000,
+                    value=6000,
+                    step=1000,
+                    help="Ingresa 0 para recoger en punto, o el valor acordado entre 0 y 20.000"
+                )
+                zona_elegida = st.text_input("Zona / Sector / Comuna:", placeholder="Ej: San Fernando / Comuna 17")
                 
                 domiciliario_asig = st.selectbox(
                     "Asignar Repartidor:", 
@@ -412,8 +389,8 @@ elif usuario_actual["rol"] == "ADMIN":
             
             st.markdown(f"""
             <div style="background-color: #fff3cd; padding: 12px; border-radius: 10px; border-left: 5px solid #ffb703; margin: 10px 0;">
-                💵 <b>Subtotal:</b> ${subtotal_comida:,.0f} COP | 🛵 <b>Flete:</b> ${costo_flete:,.0f} COP | 
-                <span style="font-size: 1.15rem; color: #D90429;"><b>TOTAL: ${total_a_cobrar:,.0f} COP</b></span>
+                💵 <b>Subtotal Comida:</b> ${subtotal_comida:,.0f} COP | 🛵 <b>Flete:</b> ${costo_flete:,.0f} COP | 
+                <span style="font-size: 1.15rem; color: #D90429;"><b>TOTAL A COBRAR: ${total_a_cobrar:,.0f} COP</b></span>
             </div>
             """, unsafe_allow_html=True)
             
@@ -444,7 +421,7 @@ elif usuario_actual["rol"] == "ADMIN":
                         "telefono": cliente_tel,
                         "direccion": cliente_dir,
                         "barrio": cliente_barrio,
-                        "zona": zona_elegida,
+                        "zona": zona_elegida if zona_elegida else "Cali General",
                         "flete": costo_flete,
                         "detalle": ", ".join(platos_seleccionados),
                         "metodo_pago": metodo_pago,
@@ -485,7 +462,7 @@ elif usuario_actual["rol"] == "ADMIN":
                     <span class="badge-orden">Orden #{p['id']} - {p['estado']}</span>
                     <span style="float: right; font-weight: bold; color: #D90429; font-size: 1.1rem;">${p['total_cobrado']:,.0f} COP</span>
                     <h4 style="margin: 6px 0;">{p['cliente']} (Tel: {p['telefono']})</h4>
-                    📍 <b>{p['direccion']}</b> ({p['barrio']}) - <i>{p['zona']}</i><br>
+                    📍 <b>{p['direccion']}</b> ({p['barrio']}) - <i>{p.get('zona', 'Cali')}</i><br>
                     🍽️ <b>Items:</b> {p['detalle']}<br>
                     💰 <b>Comida:</b> ${p['subtotal_comida']:,.0f} | 🛵 <b>Flete:</b> ${p['flete']:,.0f} | 💳 <b>Pago:</b> {p['metodo_pago']}<br>
                     🛵 <b>Repartidor:</b> {nombre_rep}
@@ -496,9 +473,7 @@ elif usuario_actual["rol"] == "ADMIN":
                     st.link_button(f"💬 Notificar por WhatsApp a {p['cliente']} (#{p['id']})", url_whatsapp)
                 st.write("")
 
-    # -----------------------------------------------------
-    # TAB 2: PEDIDOS PROGRAMADOS / PREVENTAS
-    # -----------------------------------------------------
+    # TAB 2: PROGRAMADOS
     with tab_programados:
         st.title("📅 Pedidos Programados y Preventas")
         st.caption("Agenda pedidos solicitados con anticipación y pásalos a ruta cuando corresponda.")
@@ -514,9 +489,15 @@ elif usuario_actual["rol"] == "ADMIN":
             with col_f2:
                 cli_prog_dir = st.text_input("Dirección de Entrega:", key="p_dir", placeholder="Ej: Calle 14 # 85-20")
                 cli_prog_barrio = st.text_input("Barrio:", key="p_barrio", placeholder="Ej: Ciudad Jardín")
-                zona_prog = st.selectbox("Zona de Entrega:", list(ZONAS_TARIFAS.keys()), key="p_zona")
-                costo_flete_prog = ZONAS_TARIFAS[zona_prog]
-                st.info(f"🛵 Tarifa calculada: **${costo_flete_prog:,.0f} COP**")
+                costo_flete_prog = st.number_input(
+                    "Valor del Domicilio ($):",
+                    min_value=0,
+                    max_value=20000,
+                    value=6000,
+                    step=1000,
+                    key="p_flete_manual"
+                )
+                zona_prog = st.text_input("Zona / Sector:", key="p_zona_manual", placeholder="Ej: Pance / Tequendama")
 
             st.markdown("#### 🍽️ Platos Encargados")
             platos_prog = st.multiselect("Selecciona los platos encargados:", options=list(MENU_PRODUCTOS.keys()), key="p_platos")
@@ -555,7 +536,7 @@ elif usuario_actual["rol"] == "ADMIN":
                         "telefono": cli_prog_tel,
                         "direccion": cli_prog_dir,
                         "barrio": cli_prog_barrio,
-                        "zona": zona_prog,
+                        "zona": zona_prog if zona_prog else "Cali General",
                         "flete": costo_flete_prog,
                         "detalle": ", ".join(platos_prog),
                         "metodo_pago": met_pago_prog,
@@ -592,7 +573,7 @@ elif usuario_actual["rol"] == "ADMIN":
                     <span class="badge-agendado">📅 PARA: {p.get('fecha_entrega_pactada')} a las {p.get('hora_entrega_pactada')}</span>
                     <span style="float: right; font-weight: bold; color: #1d3557; font-size: 1.15rem;">${p['total_cobrado']:,.0f} COP</span>
                     <h3 style="margin: 8px 0 4px 0;">{p['cliente']} (Tel: {p['telefono']})</h3>
-                    📍 <b>{p['direccion']}</b> ({p['barrio']}) - <i>{p['zona']}</i><br>
+                    📍 <b>{p['direccion']}</b> ({p['barrio']}) - <i>{p.get('zona', 'Cali')}</i><br>
                     🍽️ <b>Menú Encargado:</b> {p['detalle']}<br>
                     💰 <b>Comida:</b> ${p['subtotal_comida']:,.0f} | 🛵 <b>Flete:</b> ${p['flete']:,.0f} | 💳 <b>Pago:</b> {p['metodo_pago']}<br>
                     📌 <b>Estado actual:</b> {p['estado']}
@@ -616,9 +597,7 @@ elif usuario_actual["rol"] == "ADMIN":
                         st.success(f"¡Orden #{p['id']} despachada a {REPARTIDORES[rep_elegido]}!")
                         st.rerun()
 
-    # -----------------------------------------------------
-    # TAB 3: TABLERO FINANCIERO Y DESCARGA EXCEL
-    # -----------------------------------------------------
+    # TAB 3: FINANZAS Y EXCEL
     with tab_finanzas:
         st.title("📊 Tablero de Control y Liquidación")
         st.caption("Consolidado de ventas de hoy, fletes y liquidación de caja")
@@ -655,7 +634,6 @@ elif usuario_actual["rol"] == "ADMIN":
                 k3.metric("🛵 Total Fletes Repartidores", f"${total_fletes:,.0f} COP")
                 k4.metric("📈 Margen Operativo Comida", f"{margen:.1f}%")
                 
-                # BOTÓN DE DESCARGA DIRECTA
                 csv_data = df_calc.to_csv(index=False).encode('utf-8')
                 st.download_button(
                     label="📥 Descargar Base de Datos Completa (Excel / CSV)",
@@ -669,19 +647,19 @@ elif usuario_actual["rol"] == "ADMIN":
                 c_zona, c_rep = st.columns([1, 1.2])
                 
                 with c_zona:
-                    st.subheader("📍 Domicilios por Zona")
+                    st.subheader("📍 Domicilios por Zona / Sector")
                     res_zona = df_calc.groupby("zona").agg(
                         Cantidad=("id", "count"),
-                        Tarifa=("flete", "first"),
+                        Tarifa_Promedio=("flete", "mean"),
                         Total_Fletes=("flete", "sum"),
                         Venta_Comida=("subtotal_comida", "sum")
                     ).reset_index()
                     
                     st.dataframe(
                         res_zona.rename(columns={
-                            "zona": "Zona",
+                            "zona": "Zona / Sector",
                             "Cantidad": "Cant.",
-                            "Tarifa": "Flete ($)",
+                            "Tarifa_Promedio": "Flete Prom. ($)",
                             "Total_Fletes": "Total Domicilios ($)",
                             "Venta_Comida": "Venta Neta ($)"
                         }),

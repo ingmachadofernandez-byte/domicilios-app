@@ -2,6 +2,7 @@
 
 NUMERO_NEQUI_OFICIAL = "312 248 2577"
 LINK_GOOGLE_SHEETS = "https://docs.google.com/spreadsheets/d/1CIM4KVvcYqZz1li65hGzfxhvKGIjEzb9OVZwv5MPAQ4/edit"
+URL_WEBHOOK_SHEETS = "https://script.google.com/macros/s/AKfycbwF3VJd-8DZoZkqAtnJAtlqLXPbuq4VcUGiH1WsSzBOs7BC-YjLgMzC8stm2zFLLpe6/exec"
 
 # Encargadas oficiales de despachos y agenda
 ENCARGADAS_DESPACHO = {
